@@ -9,7 +9,7 @@
 	res = !git reset --hard
 	done = !git push origin HEAD
 	lg = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
-	comm = !git add . && git commit -m
+	comm = !git add -A && git commit -m
 	pushup = push --set-upstream origin
 	devbase = "!f(){ git stash && git checkout dev && git pull && git checkout - && git merge dev && git stash pop; };f"
 [init]
