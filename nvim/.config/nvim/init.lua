@@ -276,6 +276,7 @@ vim.keymap.set("t", "<Esc>", "<C-\\><C-n>")
 vim.keymap.set("n", "<leader>vp", "<cmd>vsplit<cr>")
 vim.keymap.set("n", "<leader>vs", "<cmd>split<cr>")
 vim.keymap.set("n", "<leader>vt", "<cmd>vsplit<cr><cmd>ter<cr>i")
+vim.keymap.set("n", "<leader>vT", "<cmd>split<cr><cmd>ter<cr>i")
 
 local autocmd = vim.api.nvim_create_autocmd
 autocmd("BufWinEnter", {
