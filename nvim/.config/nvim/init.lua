@@ -13,6 +13,11 @@ require('packer').startup(function(use)
   -- Package manager
   use 'wbthomason/packer.nvim'
 
+  use {
+    'j-hui/fidget.nvim',
+    tag = 'legacy',
+  }
+
   use { -- LSP Configuration & Plugins
     'neovim/nvim-lspconfig',
     requires = {
