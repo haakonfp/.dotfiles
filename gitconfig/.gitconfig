@@ -16,3 +16,7 @@
 	defaultBranch = main
 [include]
 	path = ~/.gitconfig.local
+[pull]
+	rebase = false
+[core]
+	editor = vim
