@@ -82,11 +82,8 @@ source $ZSH/oh-my-zsh.sh
 # export LANG=en_US.UTF-8
 
 # Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#   export EDITOR='vim'
-# else
-#   export EDITOR='mvim'
-# fi
+export VISUAL=vim
+export EDITOR="$VISUAL"
 
 # Compilation flags
 # export ARCHFLAGS="-arch x86_64"
@@ -102,6 +99,8 @@ source $ZSH/oh-my-zsh.sh
 alias clip="xclip -selection clipboard"
 
 alias xl="exa -lga --icons"
+
+alias py="python3"
 
 # for git bare repo dotfile management, currently not using
 # alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
