@@ -102,6 +102,8 @@ alias xl="exa -lga --icons"
 
 alias py="python3"
 
+alias start="explorer.exe"
+
 # for git bare repo dotfile management, currently not using
 # alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
