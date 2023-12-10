@@ -101,6 +101,8 @@ alias clip="xclip -selection clipboard"
 alias xl="exa -lga --icons"
 
 alias py="python3"
+alias py-source="source .venv/bin/activate"
+alias uvicorn="python3 -m uvicorn"
 
 alias start="explorer.exe"
 
