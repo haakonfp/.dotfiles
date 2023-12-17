@@ -15,6 +15,9 @@ local M = {
     lua = {
       require("formatter.filetypes.lua").stylua,
     },
+    json = {
+      require("formatter.filetypes.json").prettier,
+    },
     ["*"] = {
       require("formatter.filetypes.any").remove_trailing_whitespace,
     },

@@ -1,5 +1,18 @@
 local options = {
-  ensure_installed = { "lua", "typescript", "javascript", "python", "rust", "svelte", "html", "css", "prisma", "c_sharp" },
+  ensure_installed = {
+    "lua",
+    "typescript",
+    "javascript",
+    "python",
+    "rust",
+    "svelte",
+    "html",
+    "css",
+    "prisma",
+    "c_sharp",
+    "markdown",
+    "json",
+  },
 
   highlight = {
     enable = true,
