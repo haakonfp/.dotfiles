@@ -121,6 +121,7 @@ local plugins = {
         "debugpy",
         "eslint-lsp",
         "js-debug-adapter",
+        "lua-language-server",
         "mypy",
         "prettier",
         "prisma-language-server",
