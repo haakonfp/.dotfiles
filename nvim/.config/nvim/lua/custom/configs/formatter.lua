@@ -21,6 +21,22 @@ local M = {
     html = {
       require("formatter.filetypes.html").prettier,
     },
+    prisma = {
+      function()
+        return {
+          exe = "prettier",
+          args = {
+            "--stdin-filepath",
+            vim.fn.fnameescape(vim.api.nvim_buf_get_name(0)),
+            "--use-tabs",
+            "--tab-width",
+            "4",
+            "--plugin=prettier-plugin-prisma",
+          },
+          stdin = true,
+        }
+      end,
+    },
     ["*"] = {
       require("formatter.filetypes.any").remove_trailing_whitespace,
     },
