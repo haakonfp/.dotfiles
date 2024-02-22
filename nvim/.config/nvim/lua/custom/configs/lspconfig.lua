@@ -1,13 +1,13 @@
-local config = require("plugins.configs.lspconfig")
+local config = require "plugins.configs.lspconfig"
 local on_attach = config.on_attach
 local capabilities = config.capabilities
 
-local lspconfig = require("lspconfig")
+local lspconfig = require "lspconfig"
 
 local function organize_imports()
   local params = {
     command = "_typescript.organizeImports",
-    arguments = {vim.api.nvim_buf_get_name(0)},
+    arguments = { vim.api.nvim_buf_get_name(0) },
   }
   vim.lsp.buf.execute_command(params)
 end
@@ -21,20 +21,20 @@ lspconfig.tsserver.setup {
   init_options = {
     preferences = {
       disableSuggestions = true,
-    }
+    },
   },
 }
 
-lspconfig.pyright.setup({
+lspconfig.pyright.setup {
   on_attach = on_attach,
   capabilities = capabilities,
-  filetypes = {"python"},
-})
+  filetypes = { "python" },
+}
 
-lspconfig.svelte.setup({
+lspconfig.svelte.setup {
   filetypes = { "svelte" },
   on_attach = function(client, bufnr)
-    if client.name == 'svelte' then
+    if client.name == "svelte" then
       vim.api.nvim_create_autocmd("BufWritePost", {
         pattern = { "*.js", "*.ts", "*.svelte" },
         callback = function(ctx)
@@ -52,37 +52,36 @@ lspconfig.svelte.setup({
     end
   end,
   capabilities = capabilities,
-})
+}
 
-lspconfig.tailwindcss.setup({
+lspconfig.tailwindcss.setup {
   on_attach = on_attach,
   capabilities = capabilities,
-  filetypes = {"html", "svelte"},
-})
+  filetypes = { "html", "svelte" },
+}
 
-lspconfig.prismals.setup({
+lspconfig.prismals.setup {
   on_attach = on_attach,
   capabilities = capabilities,
-  filetypes = {"prisma"},
-})
+  filetypes = { "prisma" },
+}
 
-lspconfig.lua_ls.setup({
-	  on_attach = on_attach,
+lspconfig.lua_ls.setup {
+  on_attach = on_attach,
   capabilities = capabilities,
-  filetypes = {"lua"},
+  filetypes = { "lua" },
+}
 
-})
-
--- lspconfig.rust_analyzer.setup({
---   on_attach = on_attach,
---   capabilities = capabilities,
---   filetypes = {"rust"},
---   root_dir = lspconfig.util.root_pattern("Cargo.toml"),
---   settings = {
---     ['rust-analyzer']= {
---       cargo = {
---         allFeatures = true,
---       }
---     }
---   }
--- })
+lspconfig.rust_analyzer.setup {
+  on_attach = on_attach,
+  capabilities = capabilities,
+  filetypes = { "rust" },
+  root_dir = lspconfig.util.root_pattern "Cargo.toml",
+  settings = {
+    ["rust-analyzer"] = {
+      cargo = {
+        allFeatures = true,
+      },
+    },
+  },
+}

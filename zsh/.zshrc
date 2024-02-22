@@ -122,7 +122,8 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 
-export DISPLAY="$(grep '^nameserver ' /etc/resolv.conf | cut -d' ' -f2):0"
+# export DISPLAY="$(grep '^nameserver ' /etc/resolv.conf | cut -d' ' -f2):0"
+export DISPLAY=:0
 export BROWSER="wslview"
 
 export LESS=-FRX

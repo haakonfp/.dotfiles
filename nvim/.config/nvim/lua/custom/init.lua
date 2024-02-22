@@ -11,3 +11,5 @@ vim.keymap.set("x", "<leader>p", [["_dP]])
 vim.keymap.set("n", "Q", "<nop>")
 
 vim.wo.relativenumber = true
+
+vim.fn.setenv("CARGO_TARGET_DIR", "target/analyzer")
