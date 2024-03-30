@@ -11,6 +11,7 @@ g.transparency = config.ui.transparency
 -------------------------------------- options ------------------------------------------
 opt.laststatus = 3 -- global statusline
 opt.showmode = false
+opt.wrap = false
 
 opt.clipboard = "unnamedplus"
 opt.cursorline = true
