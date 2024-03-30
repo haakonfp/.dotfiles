@@ -85,3 +85,10 @@ lspconfig.rust_analyzer.setup {
     },
   },
 }
+
+lspconfig.solidity.setup {
+  cmd = { "nomicfoundation-solidity-language-server", "--stdio" },
+  on_attach = on_attach,
+  capabilities = capabilities,
+  filetypes = { "solidity" },
+}

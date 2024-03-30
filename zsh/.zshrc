@@ -106,6 +106,8 @@ alias uvicorn="python3 -m uvicorn"
 
 alias start="explorer.exe"
 
+alias nvimconfig="cd $HOME/.config/nvim && nvim"
+
 # for git bare repo dotfile management, currently not using
 # alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
