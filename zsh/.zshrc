@@ -141,7 +141,8 @@ esac
 autoload -U +X bashcompinit && bashcompinit
 complete -o nospace -C /usr/bin/terraform terraform
 export VOLTA_HOME="$HOME/.volta"
-export PATH="$VOLTA_HOME/bin:$PATH"
+export NVIM_HOME="$HOME/.local/share/bob/nvim-bin/"
+export PATH="$VOLTA_HOME/bin:$NVIM_HOME:$PATH"
 
 # setup zoxide
 eval "$(zoxide init zsh)"
