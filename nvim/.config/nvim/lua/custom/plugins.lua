@@ -1,5 +1,16 @@
 local plugins = {
   {
+    "folke/zen-mode.nvim",
+    opts = {
+      plugins = {
+        options = {
+          enabled = true,
+          laststatus = 0, -- turn off the statusline in zen mode
+        },
+      },
+    },
+  },
+  {
     "github/copilot.vim",
     lazy = false,
   },

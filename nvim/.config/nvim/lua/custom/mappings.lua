@@ -1,14 +1,26 @@
 local M = {}
 
+M.windows = {
+  n = {
+    -- toggle zen mode
+    ["<leader>z"] = {
+      function()
+        require("zen-mode").toggle()
+      end,
+      "Toggle zen mode",
+    },
+  },
+}
+
 M.crates = {
   n = {
     ["<leader>rcu"] = {
-      function ()
+      function()
         require("crates").upgrade_all_crates()
       end,
-      "Update crates"
-    }
-  }
+      "Update crates",
+    },
+  },
 }
 
 M.dap = {
@@ -16,11 +28,11 @@ M.dap = {
   n = {
     ["<leader>db"] = {
       "<cmd> DapToggleBreakpoint <CR>",
-      "Add breakpoint at line"
+      "Add breakpoint at line",
     },
     ["<leader>dr"] = {
       "<cmd> DapContinue <CR>",
-      "Run or continue the debugger"
+      "Run or continue the debugger",
     },
   },
 }
@@ -29,60 +41,60 @@ M.dap_python = {
   plugin = true,
   n = {
     ["<leader>dpr"] = {
-      function ()
+      function()
         require("dap-python").test_method()
       end,
       "<cmd> DapContinue <CR>",
-      "Run or continue the debugger"
+      "Run or continue the debugger",
     },
-  }
+  },
 }
 
 M.harpoon = {
   plugin = true,
   n = {
     ["<leader>a"] = {
-      function ()
+      function()
         require("harpoon"):list():append()
       end,
-      "Add mark"
+      "Add mark",
     },
     ["<C-e>"] = {
-      function ()
+      function()
         require("harpoon").ui:toggle_quick_menu(require("harpoon"):list())
       end,
-      "Show all marks"
+      "Show all marks",
     },
     ["<C-t>"] = {
-      function ()
+      function()
         require("harpoon"):list():select(1)
       end,
-      "Go to mark 1"
+      "Go to mark 1",
     },
     ["<C-n>"] = {
-      function ()
+      function()
         require("harpoon"):list():select(2)
       end,
-      "Go to mark 3"
+      "Go to mark 3",
     },
     ["<C-s>"] = {
-      function ()
+      function()
         require("harpoon"):list():select(3)
       end,
-      "Go to mark 3"
-    }
-  }
+      "Go to mark 3",
+    },
+  },
 }
 
 M.utils = {
   n = {
     ["<leader>fd"] = {
-      function ()
+      function()
         vim.lsp.buf.format()
       end,
-      "Format document"
-    }
-  }
+      "Format document",
+    },
+  },
 }
 
 return M
