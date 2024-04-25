@@ -75,7 +75,7 @@ M.harpoon = {
       function()
         require("harpoon"):list():select(2)
       end,
-      "Go to mark 3",
+      "Go to mark 2",
     },
     ["<C-s>"] = {
       function()
