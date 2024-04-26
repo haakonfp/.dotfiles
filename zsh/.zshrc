@@ -102,6 +102,7 @@ alias xl="exa -lga --icons"
 
 alias py="python3"
 alias py-source="source .venv/bin/activate"
+alias uv-source="uv venv && source .venv/bin/activate"
 alias uvicorn="python3 -m uvicorn"
 
 alias start="explorer.exe"
@@ -140,9 +141,16 @@ esac
 
 autoload -U +X bashcompinit && bashcompinit
 complete -o nospace -C /usr/bin/terraform terraform
+
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+
 export VOLTA_HOME="$HOME/.volta"
 export NVIM_HOME="$HOME/.local/share/bob/nvim-bin/"
 export PATH="$VOLTA_HOME/bin:$NVIM_HOME:$PATH"
 
 # setup zoxide
 eval "$(zoxide init zsh)"
+
+. "$HOME/.cargo/env"

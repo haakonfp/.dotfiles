@@ -2,7 +2,7 @@ require("lint").linters_by_ft = {
   javascript = { "eslint" },
   typescript = { "eslint" },
   svelte = { "eslint" },
-  python = { "ruff", "mypy" },
+  -- python = { "ruff_lsp" },
   solidity = { "solhint" },
 }
 

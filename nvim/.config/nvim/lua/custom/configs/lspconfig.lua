@@ -25,10 +25,30 @@ lspconfig.tsserver.setup {
   },
 }
 
+lspconfig.ruff_lsp.setup {
+  on_attach = on_attach,
+  capabilities = capabilities,
+  filetypes = { "python" },
+}
+
 lspconfig.pyright.setup {
   on_attach = on_attach,
   capabilities = capabilities,
   filetypes = { "python" },
+  settings = {
+    pyright = {
+      disableOrganizeImports = true,
+      disableTaggedHints = true,
+    },
+    python = {
+      analysis = {
+        diagnosticSeverityOverrides = {
+          -- https://github.com/microsoft/pyright/blob/main/docs/configuration.md#type-check-diagnostics-settings
+          reportUndefinedVariable = "none",
+        },
+      },
+    },
+  },
 }
 
 lspconfig.svelte.setup {

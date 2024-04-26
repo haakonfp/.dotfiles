@@ -7,7 +7,7 @@ local M = {
       require("formatter.filetypes.typescript").prettier,
     },
     python = {
-      require("formatter.filetypes.python").black,
+      require("formatter.filetypes.python").ruff_lsp,
     },
     svelte = {
       require("formatter.filetypes.svelte").prettier,

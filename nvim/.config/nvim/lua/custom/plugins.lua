@@ -131,7 +131,6 @@ local plugins = {
     "williamboman/mason.nvim",
     opts = {
       ensure_installed = {
-        "black",
         "debugpy",
         "eslint-lsp",
         "js-debug-adapter",
@@ -141,6 +140,7 @@ local plugins = {
         "prisma-language-server",
         "pyright",
         "ruff",
+        "ruff-lsp",
         "rust-analyzer",
         "stylua",
         "svelte-language-server",
