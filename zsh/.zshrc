@@ -104,6 +104,7 @@ alias py="python3"
 alias py-source="source .venv/bin/activate"
 alias uv-source="uv venv && source .venv/bin/activate"
 alias uvicorn="python3 -m uvicorn"
+alias pvim="py-source && nvim"
 
 alias start="explorer.exe"
 
