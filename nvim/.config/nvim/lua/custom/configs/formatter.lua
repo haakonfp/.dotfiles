@@ -6,9 +6,9 @@ local M = {
     typescript = {
       require("formatter.filetypes.typescript").prettier,
     },
-	typescriptreact = {
-	  require("formatter.filetypes.typescript").prettier,
-	},
+    typescriptreact = {
+      require("formatter.filetypes.typescript").prettier,
+    },
     python = {
       require("formatter.filetypes.python").ruff_lsp,
     },
@@ -23,6 +23,9 @@ local M = {
     },
     html = {
       require("formatter.filetypes.html").prettier,
+    },
+    css = {
+      require("formatter.filetypes.css").prettier,
     },
     prisma = {
       function()
