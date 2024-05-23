@@ -136,7 +136,7 @@ local plugins = {
         "js-debug-adapter",
         "lua-language-server",
         "mypy",
-        "prettier",
+        "prettierd",
         "prisma-language-server",
         "pyright",
         "ruff",

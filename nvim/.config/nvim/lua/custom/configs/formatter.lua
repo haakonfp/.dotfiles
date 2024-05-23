@@ -6,6 +6,9 @@ local M = {
     typescript = {
       require("formatter.filetypes.typescript").prettier,
     },
+	typescriptreact = {
+	  require("formatter.filetypes.typescript").prettier,
+	},
     python = {
       require("formatter.filetypes.python").ruff_lsp,
     },
