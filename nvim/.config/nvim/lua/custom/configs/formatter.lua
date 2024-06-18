@@ -30,8 +30,9 @@ local M = {
     prisma = {
       function()
         return {
-          exe = "prettier",
+          exe = "pnpm prettier",
           args = {
+			"--write",
             "--stdin-filepath",
             vim.fn.fnameescape(vim.api.nvim_buf_get_name(0)),
             "--use-tabs",
