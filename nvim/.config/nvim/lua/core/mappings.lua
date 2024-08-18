@@ -26,6 +26,11 @@ M.general = {
     -- save
     ["<C-w>"] = { "<cmd> w <CR>", "Save file" },
 
+    ["<leader><Left>"] = { "<C-w><", "Decrease width" },
+    ["<leader><Right>"] = { "<C-w>>", "Increase width" },
+    ["<leader><Up>"] = { "<C-w>+", "Decrease width" },
+    ["<leader><Down>"] = { "<C-w>-", "Increase width" },
+
     -- Copy all
     ["<C-c>"] = { "<cmd> %y+ <CR>", "Copy whole file" },
 

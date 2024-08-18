@@ -93,6 +93,7 @@ lspconfig.lua_ls.setup {
 }
 
 lspconfig.rust_analyzer.setup {
+  -- cmd = { "/home/hfp/dev/hfp/rust-analyzer/target/release/rust-analyzer" },
   on_attach = on_attach,
   capabilities = capabilities,
   filetypes = { "rust" },

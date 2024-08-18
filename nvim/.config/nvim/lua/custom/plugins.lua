@@ -1,3 +1,5 @@
+local leet_arg = "leetcode.nvim"
+
 local plugins = {
   {
     "folke/zen-mode.nvim",
@@ -21,6 +23,29 @@ local plugins = {
       table.insert(M.sources, { name = "crates" })
       return M
     end,
+  },
+  {
+    "kawre/leetcode.nvim",
+    cmd = "Leet",
+    build = ":TSUpdate html",
+    dependencies = {
+      "nvim-telescope/telescope.nvim",
+      "nvim-lua/plenary.nvim", -- required by telescope
+      "MunifTanjim/nui.nvim",
+
+      -- optional
+      "nvim-treesitter/nvim-treesitter",
+      "rcarriga/nvim-notify",
+      "nvim-tree/nvim-web-devicons",
+    },
+    lazy = leet_arg ~= vim.fn.argv()[1],
+    opts = {
+      lang = "rust",
+      arg = leet_arg,
+      plugins = {
+        non_standalone = true,
+      },
+    },
   },
   {
     "mfussenegger/nvim-dap",
