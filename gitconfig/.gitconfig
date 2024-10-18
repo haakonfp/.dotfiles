@@ -17,6 +17,6 @@
 [include]
 	path = ~/.gitconfig.local
 [pull]
-	rebase = false
+	rebase = true
 [core]
 	editor = vim

@@ -110,10 +110,16 @@ alias start="explorer.exe"
 
 alias nvimconfig="cd $HOME/.config/nvim && nvim"
 
+alias work="$HOME/tmux-work.sh"
+alias dev="$HOME/tmux-dev.sh"
+
 # for git bare repo dotfile management, currently not using
 # alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
 # ----------------
+
+# webi
+source ~/.config/envman/PATH.env
 
 # starship config
 eval "$(starship init zsh)"

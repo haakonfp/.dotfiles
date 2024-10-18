@@ -12,7 +12,7 @@ local function organize_imports()
   vim.lsp.buf.execute_command(params)
 end
 
-lspconfig.tsserver.setup {
+lspconfig.ts_ls.setup {
   on_attach = function(client, bfnr)
     on_attach(client, bfnr)
     vim.api.nvim_create_user_command("OrganizeImports", organize_imports, { desc = "Organize Imports" })
