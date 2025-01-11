@@ -98,7 +98,7 @@ export EDITOR="$VISUAL"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias clip="xclip -selection clipboard"
 
-alias xl="exa -lga --icons"
+alias xl="eza -lga --icons"
 
 alias py="python3"
 alias py-source="source .venv/bin/activate"
