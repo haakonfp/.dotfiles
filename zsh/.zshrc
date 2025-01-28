@@ -134,6 +134,8 @@ export NVM_DIR="$HOME/.nvm"
 # export DISPLAY="$(grep '^nameserver ' /etc/resolv.conf | cut -d' ' -f2):0"
 export DISPLAY=:0
 export BROWSER="wslview"
+
+# for tauri development on linux
 export LIBGL_ALWAYS_SOFTWARE=1
 
 export LESS=-FRX
