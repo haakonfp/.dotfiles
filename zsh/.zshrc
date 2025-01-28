@@ -110,7 +110,7 @@ alias start="explorer.exe"
 alias nvimconfig="cd $HOME/.config/nvim && nvim"
 
 alias work="$HOME/tmux-work.sh"
-alias dev="$HOME/tmux-current.sh"
+alias dev="$HOME/tmux-dev.sh"
 
 # for git bare repo dotfile management, currently not using
 # alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
@@ -134,8 +134,6 @@ export NVM_DIR="$HOME/.nvm"
 # export DISPLAY="$(grep '^nameserver ' /etc/resolv.conf | cut -d' ' -f2):0"
 export DISPLAY=:0
 export BROWSER="wslview"
-
-# for tauri development on linux
 export LIBGL_ALWAYS_SOFTWARE=1
 
 export LESS=-FRX
