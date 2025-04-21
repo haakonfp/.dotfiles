@@ -1,7 +1,11 @@
 require "nvchad.options"
 -- add custom options here
 
--- local o = vim.o
+local o = vim.o
+o.tabstop = 4
+o.shiftwidth = 4
+o.softtabstop = 4
+o.expandtab = true -- use spaces instead of tabs
 -- o.cursorlineopt = "both" -- enable cursorline. note: does not work with transparent theme
 
 local wo = vim.wo
