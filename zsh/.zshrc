@@ -100,6 +100,7 @@ alias clip="xclip -selection clipboard"
 alias xl="eza -lga --icons"
 
 alias py="python3"
+alias python="python3"
 alias py-source="source .venv/bin/activate"
 alias uv-source="uv venv && source .venv/bin/activate"
 alias uvicorn="python3 -m uvicorn"
@@ -118,13 +119,13 @@ alias dev="$HOME/tmux-dev.sh"
 # ----------------
 
 # webi
-source ~/.config/envman/PATH.env
+# source ~/.config/envman/PATH.env
+
+# Generated for envman. Do not edit.
+# [ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
 
 # starship config
 eval "$(starship init zsh)"
-
-# Generated for envman. Do not edit.
-[ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -157,7 +158,7 @@ complete -o nospace -C /usr/bin/terraform terraform
 
 export VOLTA_HOME="$HOME/.volta"
 export NVIM_HOME="$HOME/.local/share/bob/nvim-bin/"
-export PATH="$VOLTA_HOME/bin:$NVIM_HOME:$PATH"
+export PATH="$VOLTA_HOME/bin:$NVIM_HOME:$PATH:/home/hfp/.local/bin"
 
 # setup zoxide
 eval "$(zoxide init zsh)"
