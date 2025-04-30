@@ -35,7 +35,8 @@ M.mason = {
     "svelte-language-server",
     "tailwindcss-language-server",
     "typescript-language-server",
-    "gopls",
+    "ruff",
+    "pyright",
   },
 }
 

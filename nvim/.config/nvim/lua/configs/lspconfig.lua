@@ -55,6 +55,29 @@ lspconfig.svelte.setup {
   capabilities = nvlsp.capabilities,
 }
 
+lspconfig.ruff.setup {
+  on_attach = nvlsp.on_attach,
+  capabilities = nvlsp.capabilities,
+  filetypes = { "python" },
+  root_dir = lspconfig.util.root_pattern { ".git", "setup.py", "setup.cfg", "pyproject.toml", "tox.ini" },
+  init_options = {
+    settings = {},
+  },
+}
+
+require("lspconfig").pyright.setup {
+  settings = {
+    pyright = {
+      disableOrganizeImports = true,
+    },
+    python = {
+      analysis = {
+        ignore = { "*" },
+      },
+    },
+  },
+}
+
 -- lspconfig.rust_analyzer.setup {
 --   -- cmd = { "/home/hfp/dev/hfp/rust-analyzer/target/release/rust-analyzer" },
 --   on_attach = nvlsp.on_attach,

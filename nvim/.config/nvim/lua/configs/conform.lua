@@ -8,6 +8,7 @@ local options = {
     typescript = { "prettierd", "prettier" },
     svelte = { "prettierd", "prettier" },
     json = { "prettierd", "prettier" },
+    python = { "ruff" },
   },
 
   format_on_save = {
