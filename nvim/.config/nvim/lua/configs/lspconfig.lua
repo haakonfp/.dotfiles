@@ -61,7 +61,9 @@ lspconfig.ruff.setup {
   filetypes = { "python" },
   root_dir = lspconfig.util.root_pattern { ".git", "setup.py", "setup.cfg", "pyproject.toml", "tox.ini" },
   init_options = {
-    settings = {},
+    settings = {
+      logLevel = "info",
+    },
   },
 }
 
