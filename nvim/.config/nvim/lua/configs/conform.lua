@@ -1,14 +1,14 @@
 local options = {
   formatters_by_ft = {
     lua = { "stylua" },
-    css = { "prettierd", "prettier" },
-    html = { "prettierd", "prettier" },
+    css = { "prettierd" },
+    html = { "prettierd" },
     rust = { "rustfmt" },
-    javascript = { "prettierd", "prettier" },
-    typescript = { "prettierd", "prettier" },
-    svelte = { "prettierd", "prettier" },
-    json = { "prettierd", "prettier" },
-    python = { "ruff" },
+    javascript = { "prettierd" },
+    typescript = { "prettierd" },
+    svelte = { "prettierd" },
+    json = { "prettierd" },
+    python = { "ruff_fix", "ruff_format", "ruff_organize_imports" },
   },
 
   format_on_save = {

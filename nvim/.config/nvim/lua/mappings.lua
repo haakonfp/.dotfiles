@@ -27,6 +27,8 @@ map("n", "<leader><Down>", "<C-w>-", { desc = "Decrease height" })
 
 map("n", "<leader>ft", "<cmd>TodoTelescope<CR>", { desc = "Find Todo" })
 
+vim.keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, { desc = "code action" })
+
 map("n", "[d", function()
   vim.diagnostic.jump { count = -1, float = true }
 end, { desc = "Previous diagnostic with float" })
