@@ -119,10 +119,10 @@ alias dev="$HOME/tmux-dev.sh"
 # ----------------
 
 # webi
-# source ~/.config/envman/PATH.env
+source ~/.config/envman/PATH.env
 
 # Generated for envman. Do not edit.
-# [ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
+[ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
 
 # starship config
 eval "$(starship init zsh)"

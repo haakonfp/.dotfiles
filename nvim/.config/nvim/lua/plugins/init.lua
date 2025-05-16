@@ -2,8 +2,13 @@ local leet_arg = "leetcode.nvim"
 
 return {
   {
-    "github/copilot.vim",
+    "zbirenbaum/copilot.lua",
     lazy = false,
+    cmd = "Copilot",
+    event = "InsertEnter",
+    config = function()
+      require("copilot").setup {}
+    end,
   },
 
   {
