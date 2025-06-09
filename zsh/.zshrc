@@ -157,6 +157,8 @@ complete -o nospace -C /usr/bin/terraform terraform
 # eval "$(pyenv init -)"
 
 export VOLTA_HOME="$HOME/.volta"
+export VOLTA_FEATURE_PNPM=1
+
 export NVIM_HOME="$HOME/.local/share/bob/nvim-bin/"
 export PATH="$VOLTA_HOME/bin:$NVIM_HOME:$PATH:/home/hfp/.local/bin"
 
