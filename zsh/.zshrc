@@ -163,7 +163,10 @@ export NVIM_HOME="$HOME/.local/share/bob/nvim-bin/"
 export PATH="$VOLTA_HOME/bin:$NVIM_HOME:$PATH:/home/hfp/.local/bin"
 
 # Remove Windows paths from PATH
-export PATH=$(echo $PATH | tr ':' '\n' | grep -v "/mnt/c" | tr '\n' ':' | sed 's/:$//')
+# export PATH=$(echo $PATH | tr ':' '\n' | grep -v "/mnt/c" | tr '\n' ':' | sed 's/:$//')
+
+# Remove specific Windows dev tools from PATH
+export PATH=$(echo $PATH | tr ':' '\n' | grep -v -E "/mnt/c.*(nodejs|npm|pnpm|node_modules)" | tr '\n' ':' | sed 's/:$//')
 
 # setup zoxide
 eval "$(zoxide init zsh)"
