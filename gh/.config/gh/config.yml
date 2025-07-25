@@ -9,6 +9,27 @@ pager:
 # Aliases allow you to create nicknames for gh commands
 aliases:
     co: pr checkout
+    dev: |-
+        !f() {
+          if [ -z "$1" ]; then
+              echo "Usage: gh dev <issue-number> [base-branch]" >&2
+              return 1
+          fi
+
+          num="$1"
+          base="$2"
+
+          branch=$(gh issue develop --list "$num" | cut -f1 | head -n1)
+          if [ -n "$branch" ]; then
+              git checkout "$branch"
+          else
+              if [ -n "$base" ]; then
+                  gh issue develop "$num" --name "feat/dev-$num" --base "$base" --checkout
+              else
+                  gh issue develop "$num" --name "feat/dev-$num" --checkout
+              fi
+          fi
+        }; f "$@"
 # The path to a unix socket through which send HTTP connections. If blank, HTTP traffic will be handled by net/http.DefaultTransport.
 http_unix_socket:
 # What web browser gh should use when opening URLs. If blank, will refer to environment.

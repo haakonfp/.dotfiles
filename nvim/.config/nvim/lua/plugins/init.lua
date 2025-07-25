@@ -3,7 +3,7 @@ local leet_arg = "leetcode.nvim"
 return {
   {
     "zbirenbaum/copilot.lua",
-    lazy = false,
+    -- lazy = false,
     cmd = "Copilot",
     event = "InsertEnter",
     config = function()
@@ -146,6 +146,8 @@ return {
       -- add any opts here
       -- for example
       provider = "claude",
+      mode = "agentic",
+      auto_suggestions_provider = "claude",
       providers = {
         claude = {
           endpoint = "https://api.anthropic.com",
@@ -153,6 +155,7 @@ return {
           timeout = 30000, -- Timeout in milliseconds, increase this for reasoning models
           extra_request_body = {
             temperature = 0,
+            max_tokens = 4096,
           },
         },
       },
