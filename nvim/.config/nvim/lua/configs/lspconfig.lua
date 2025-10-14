@@ -1,5 +1,5 @@
 local nvlsp = require "nvchad.configs.lspconfig"
-local lspconfig = require "lspconfig"
+-- local lspconfig = require "lspconfig"
 
 nvlsp.defaults()
 
@@ -25,84 +25,68 @@ local servers = {
   prismals = {
     filetypes = { "prisma" },
   },
-}
-
-for name, opts in pairs(servers) do
-  vim.lsp.enable(name) -- nvim v0.11.0 or above required
-  vim.lsp.config(name, opts) -- nvim v0.11.0 or above required
-end
-
-lspconfig.svelte.setup {
-  filetypes = { "svelte" },
-  on_attach = function(client, bufnr)
-    if client.name == "svelte" then
-      vim.api.nvim_create_autocmd("BufWritePost", {
-        pattern = { "*.js", "*.ts", "*.svelte" },
-        callback = function(ctx)
-          client.notify("$/onDidChangeTsOrJsFile", { uri = ctx.file })
-        end,
-      })
-    end
-    if vim.bo[bufnr].filetype == "svelte" then
-      vim.api.nvim_create_autocmd("BufWritePost", {
-        pattern = { "*.js", "*.ts", "*.svelte" },
-        callback = function(ctx)
-          client.notify("$/onDidChangeTsOrJsFile", { uri = ctx.file })
-        end,
-      })
-    end
-  end,
-  capabilities = nvlsp.capabilities,
-}
-
-lspconfig.ruff.setup {
-  on_attach = nvlsp.on_attach,
-  capabilities = nvlsp.capabilities,
-  filetypes = { "python" },
-  root_dir = lspconfig.util.root_pattern { ".git", "setup.py", "setup.cfg", "pyproject.toml", "tox.ini" },
-  init_options = {
-    settings = {
-      logLevel = "info",
-    },
-  },
-}
-
-require("lspconfig").pyright.setup {
-  settings = {
-    pyright = {
-      disableOrganizeImports = true,
-    },
-    python = {
-      analysis = {
-        ignore = { "*" },
+  ruff = {
+    on_attach = nvlsp.on_attach,
+    capabilities = nvlsp.capabilities,
+    filetypes = { "python" },
+    root_dir = vim.fs.dirname(
+      vim.fs.find({ ".git", "setup.py", "setup.cfg", "pyproject.toml", "tox.ini" }, { upward = true })[1]
+    ),
+    init_options = {
+      settings = {
+        logLevel = "info",
       },
     },
   },
+  ty = {
+    cmd = { "ty", "server" },
+    filetypes = { "python" },
+    root_dir = vim.fs.root(0, { ".git/", "pyproject.toml" }),
+    settings = {
+      ty = {
+        disableLanguageServices = true,
+      },
+    },
+  },
+  pyright = {
+    settings = {
+      pyright = {
+        disableOrganizeImports = true,
+      },
+      python = {
+        analysis = {
+          ignore = { "*" },
+        },
+        venvPath = ".venv",
+        pythonPath = ".venv/bin/python",
+      },
+    },
+  },
+  svelte = {
+    filetypes = { "svelte" },
+    on_attach = function(client, bufnr)
+      if client.name == "svelte" then
+        vim.api.nvim_create_autocmd("BufWritePost", {
+          pattern = { "*.js", "*.ts", "*.svelte" },
+          callback = function(ctx)
+            client.notify("$/onDidChangeTsOrJsFile", { uri = ctx.file })
+          end,
+        })
+      end
+      if vim.bo[bufnr].filetype == "svelte" then
+        vim.api.nvim_create_autocmd("BufWritePost", {
+          pattern = { "*.js", "*.ts", "*.svelte" },
+          callback = function(ctx)
+            client.notify("$/onDidChangeTsOrJsFile", { uri = ctx.file })
+          end,
+        })
+      end
+    end,
+    capabilities = nvlsp.capabilities,
+  },
 }
 
--- lspconfig.rust_analyzer.setup {
---   -- cmd = { "/home/hfp/dev/hfp/rust-analyzer/target/release/rust-analyzer" },
---   on_attach = nvlsp.on_attach,
---   capabilities = nvlsp.capabilities,
---   filetypes = { "rust" },
---   root_dir = lspconfig.util.root_pattern "Cargo.toml",
---   settings = {
---     ["rust-analyzer"] = {
---       imports = {
---         granularity = {
---           group = "module",
---         },
---         prefix = "self",
---       },
---       cargo = {
---         allFeatures = true,
---         buildScripts = {
---           enable = true,
---         },
---       },
---       procMacro = {
---         enable = true,
---       },
---     },
---   },
--- }
+for name, opts in pairs(servers) do
+  vim.lsp.config(name, opts) -- nvim v0.11.0 or above required
+  vim.lsp.enable(name) -- nvim v0.11.0 or above required
+end

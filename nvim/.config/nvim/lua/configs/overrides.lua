@@ -37,6 +37,7 @@ M.mason = {
     "typescript-language-server",
     "ruff",
     "pyright",
+    "ty",
   },
 }
 
