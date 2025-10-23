@@ -3,11 +3,20 @@ local leet_arg = "leetcode.nvim"
 return {
   {
     "zbirenbaum/copilot.lua",
+    -- requires = {
+    -- "copilotlsp-nvim/copilot-lsp", -- (optional) for NES functionality
+    -- },
     -- lazy = false,
     cmd = "Copilot",
     event = "InsertEnter",
     config = function()
-      require("copilot").setup {}
+      require("copilot").setup {
+        suggestion = {
+          keymap = {
+            accept = "<M-l>", -- Alt + l
+          },
+        },
+      }
     end,
   },
 
@@ -50,46 +59,14 @@ return {
 
   -- test new blink
   -- { import = "nvchad.blink.lazyspec" },
-
   {
     "nvim-treesitter/nvim-treesitter",
-    opts = {
-      ensure_installed = {
-        "vim",
-        "lua",
-        "vimdoc",
-        "html",
-        "css",
-        "typescript",
-        "javascript",
-        "python",
-        "rust",
-        "svelte",
-        "prisma",
-        "c_sharp",
-        "markdown",
-        "json",
-      },
-    },
+    opts = require("configs.overrides").treesitter,
   },
 
   {
     "williamboman/mason.nvim",
-    opts = {
-      ensure_installed = {
-        "lua-language-server",
-        "css-lsp",
-        "html-lsp",
-        "prettierd",
-        "eslint_d",
-        "prisma-language-server",
-        "rust-analyzer",
-        "stylua",
-        "svelte-language-server",
-        "tailwindcss-language-server",
-        "typescript-language-server",
-      },
-    },
+    opts = require("configs.overrides").mason,
   },
 
   {
