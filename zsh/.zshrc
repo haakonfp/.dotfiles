@@ -172,3 +172,6 @@ export PATH=$(echo $PATH | tr ':' '\n' | grep -v -E "/mnt/c.*(nodejs|npm|pnpm|no
 eval "$(zoxide init zsh)"
 
 . "$HOME/.cargo/env"
+
+# opencode
+export PATH=/home/hfp/.opencode/bin:$PATH
