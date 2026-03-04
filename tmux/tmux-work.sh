@@ -32,8 +32,10 @@ if [ $? != 0 ]; then
     tmux send-keys -t $SESSION_NAME:vim "nvim" C-m
     tmux new-window -t $SESSION_NAME:1 -n "run" -c "$WORK_DIR"
     tmux new-window -t $SESSION_NAME:2 -n "browse" -c "$WORK_DIR"
-    tmux new-window -t $SESSION_NAME:3 -n "opencode" -c "$WORK_DIR"
+    tmux new-window -t $SESSION_NAME:3 -n "opencode" -c "$TARGET_DIR"
     tmux send-keys -t $SESSION_NAME:opencode "opencode" C-m
+    tmux new-window -t $SESSION_NAME:4 -n "codex" -c "$TARGET_DIR"
+    tmux send-keys -t $SESSION_NAME:codex "clear && codex" C-m
     tmux select-window -t $SESSION_NAME:0
 else
     echo "work session already exists. attaching..."
