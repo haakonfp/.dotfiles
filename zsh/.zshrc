@@ -111,6 +111,7 @@ alias start="explorer.exe"
 alias nvimconfig="cd $HOME/.config/nvim && nvim"
 
 alias work="$HOME/tmux-work.sh"
+alias work2="$HOME/tmux-work2.sh"
 alias dev="$HOME/tmux-dev.sh"
 
 # for git bare repo dotfile management, currently not using
