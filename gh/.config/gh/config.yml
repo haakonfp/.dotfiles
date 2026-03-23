@@ -9,27 +9,222 @@ pager:
 # Aliases allow you to create nicknames for gh commands
 aliases:
     co: pr checkout
+    ctx: |-
+        !f() {
+          stage() {
+            printf '==> %s\n' "$1"
+          }
+
+          repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          outdir="$repo_root/ctx/issues"
+          num=""
+
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --context)
+                outdir="$2"
+                shift 2
+                ;;
+              -h|--help)
+                echo "Usage: gh ctx <issue-number> [--context <path>]"
+                echo "       gh ctx [--context <path>]"
+                return 0
+                ;;
+              *)
+                num="$1"
+                shift
+                ;;
+            esac
+          done
+
+          fetch_issue() {
+            local n="$1"
+            local dir="$2"
+            local state
+            local tmp
+
+            stage "context #$n"
+
+            state=$(gh issue view "$n" --json state -q '.state' 2>/dev/null) || {
+              printf '!! could not fetch issue #%s\n' "$n" >&2
+              return 1
+            }
+
+            if [ "$state" = "CLOSED" ]; then
+              rm -f "$dir/${n}.md"
+              printf '   closed, removed %s/%s.md\n' "$dir" "$n"
+              return 0
+            fi
+
+            mkdir -p "$dir" || return 1
+            tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-${n}.XXXXXX") || return 1
+
+            gh issue view "$n" \
+              --json number,title,url,state,labels,assignees,author,createdAt,body,comments \
+              --template '{{printf "# Issue #%v: %s\n\n" .number .title}}- **URL:** {{.url}}
+        - **State:** {{.state}}
+        - **Author:** {{.author.login}}
+        - **Created:** {{.createdAt}}
+        - **Labels:** {{if .labels}}{{range $i, $label := .labels}}{{if $i}}, {{end}}{{$label.name}}{{end}}{{else}}none{{end}}
+        - **Assignees:** {{if .assignees}}{{range $i, $assignee := .assignees}}{{if $i}}, {{end}}{{$assignee.login}}{{end}}{{else}}unassigned{{end}}
+
+        ---
+
+        ## Description
+
+        {{if .body}}{{.body}}{{else}}No description provided.{{end}}{{if .comments}}
+
+        ---
+
+        ## Comments
+
+        {{range .comments}}### @{{.author.login}} ({{.createdAt}})
+
+        {{.body}}
+
+        ---
+        {{end}}{{end}}' > "$tmp" || {
+              rm -f "$tmp"
+              printf '!! render failed for issue #%s\n' "$n" >&2
+              return 1
+            }
+
+            mv "$tmp" "$dir/${n}.md" || {
+              rm -f "$tmp"
+              printf '!! could not write %s/%s.md\n' "$dir" "$n" >&2
+              return 1
+            }
+
+            printf '   saved %s/%s.md\n' "$dir" "$n"
+          }
+
+          if [ -n "$num" ]; then
+            fetch_issue "$num" "$outdir"
+          else
+            found=0
+            for f in "$outdir"/*.md; do
+              [ -f "$f" ] || continue
+              n=$(basename "$f" .md)
+              fetch_issue "$n" "$outdir" || return 1
+              found=1
+            done
+            if [ "$found" -eq 0 ]; then
+              printf '!! no issue files found in %s\n' "$outdir" >&2
+              echo "Usage: gh ctx <issue-number> [--context <path>]" >&2
+              return 1
+            fi
+          fi
+        }
+
+        f "$@"
     dev: |-
         !f() {
-          if [ -z "$1" ]; then
-              echo "Usage: gh dev <issue-number> [base-branch]" >&2
-              return 1
+          stage() {
+            printf '==> %s\n' "$1"
+          }
+
+          if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+            echo "Usage: gh dev <issue-number> [base-branch]"
+            return 0
           fi
 
           num="$1"
           base="$2"
 
+          stage "branch #$num"
+
           branch=$(gh issue develop --list "$num" | cut -f1 | head -n1)
           if [ -n "$branch" ]; then
-              git checkout "$branch"
+            printf '   checkout %s\n' "$branch"
+            git checkout "$branch" || return 1
           else
-              if [ -n "$base" ]; then
-                  gh issue develop "$num" --name "feat/dev-$num" --base "$base" --checkout
-              else
-                  gh issue develop "$num" --name "feat/dev-$num" --checkout
-              fi
+            itype=$(gh issue view "$num" --json type -q '.type.name // empty' 2>/dev/null)
+            case "$itype" in
+              Bug) prefix="fix" ;;
+              Task) prefix="task" ;;
+              *) prefix="feat" ;;
+            esac
+
+            branch="${prefix}/dev-$num"
+            printf '   create %s\n' "$branch"
+            if [ -n "$base" ]; then
+              gh issue develop "$num" --name "$branch" --base "$base" --checkout || return 1
+            else
+              gh issue develop "$num" --name "$branch" --checkout || return 1
+            fi
           fi
-        }; f "$@"
+
+          gh ctx "$num"
+        }
+
+        f "$@"
+    solve: |-
+        !f() {
+          stage() {
+            printf '==> %s\n' "$1"
+          }
+
+          if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+            echo "Usage: gh solve <issue-number> [base-branch] [--note \"extra context\"]"
+            return 0
+          fi
+
+          repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          num=""
+          base=""
+          note=""
+
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --note)
+                note="$2"
+                shift 2
+                ;;
+              *)
+                if [ -z "$num" ]; then
+                  num="$1"
+                elif [ -z "$base" ]; then
+                  base="$1"
+                fi
+                shift
+                ;;
+            esac
+          done
+
+          stage "solve #$num"
+
+          if [ -n "$base" ]; then
+            gh dev "$num" "$base" || return 1
+          else
+            gh dev "$num" || return 1
+          fi
+
+          if [ ! -s "$repo_root/ctx/issues/${num}.md" ]; then
+            printf '!! missing issue context at %s/ctx/issues/%s.md\n' "$repo_root" "$num" >&2
+            return 1
+          fi
+
+          stage "codex"
+
+          prompt="Read ctx/issues/${num}.md — it contains the GitHub issue description, metadata, and all comments. Solve this issue:
+
+        1. Study the issue thoroughly. Understand the requirements, constraints, and any discussion in the comments.
+        2. Explore the codebase. Map out the architecture, find the relevant files, and understand existing patterns and conventions.
+        3. Implement the solution. Follow existing code style, patterns, and conventions. Write clean, maintainable code. Keep changes minimal and focused — solve exactly what the issue asks, nothing more.
+        4. Verify your changes compile/run correctly and don't break existing functionality.
+
+        Search online for documentation or API references if needed. If anything in the issue is ambiguous, state your assumptions before proceeding."
+
+          if [ -n "$note" ]; then
+            prompt="${prompt}
+
+        Additional context: ${note}"
+          fi
+
+          codex --full-auto --search "$prompt"
+        }
+
+        f "$@"
 # The path to a unix socket through which send HTTP connections. If blank, HTTP traffic will be handled by net/http.DefaultTransport.
 http_unix_socket:
 # What web browser gh should use when opening URLs. If blank, will refer to environment.
