@@ -16,7 +16,7 @@ aliases:
           }
 
           repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          outdir="$repo_root/ctx/issues"
+          outdir=""
           num=""
 
           while [ $# -gt 0 ]; do
@@ -26,8 +26,8 @@ aliases:
                 shift 2
                 ;;
               -h|--help)
-                echo "Usage: gh ctx <issue-number> [--context <path>]"
-                echo "       gh ctx [--context <path>]"
+                echo "Usage: gh ctx <number> [--context <path>]"
+                echo "       gh ctx [--context <path>]  (refresh all cached issues & PRs)"
                 return 0
                 ;;
               *)
@@ -37,13 +37,93 @@ aliases:
             esac
           done
 
+          detect_type() {
+            gh api "repos/{owner}/{repo}/issues/$1" --jq 'if .pull_request then "pr" else "issue" end' 2>/dev/null
+          }
+
+          append_issue_comments() {
+            local n="$1"
+            local tmp="$2"
+            local comments_tmp
+
+            comments_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-issue-comments-${n}.XXXXXX") || return 1
+
+            gh issue view "$n" --json comments \
+              --template '{{range .comments}}{{if and .body (ne .body "@codex review") (ne .body "@codex address that feedback")}}### @{{.author.login}} ({{.createdAt}})
+
+        {{.body}}
+
+        ---
+        {{end}}{{end}}' > "$comments_tmp" || {
+              rm -f "$comments_tmp"
+              printf '!! could not fetch comments for issue #%s\n' "$n" >&2
+              return 1
+            }
+
+            if [ -s "$comments_tmp" ]; then
+              {
+                printf '\n---\n\n## Comments\n\n'
+                cat "$comments_tmp"
+              } >> "$tmp" || {
+                rm -f "$comments_tmp"
+                printf '!! could not append comments for issue #%s\n' "$n" >&2
+                return 1
+              }
+            fi
+
+            rm -f "$comments_tmp"
+          }
+
+          append_pr_comments() {
+            local n="$1"
+            local tmp="$2"
+            local comments_tmp
+
+            comments_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-pr-comments-${n}.XXXXXX") || return 1
+
+            gh pr view "$n" --json comments \
+              --template '{{range .comments}}{{if and .body (ne .body "@codex review") (ne .body "@codex address that feedback")}}### @{{.author.login}} ({{.createdAt}})
+
+        {{.body}}
+
+        ---
+        {{end}}{{end}}' > "$comments_tmp" || {
+              rm -f "$comments_tmp"
+              printf '!! could not fetch comments for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            if [ -s "$comments_tmp" ]; then
+              {
+                printf '\n---\n\n## Comments\n\n'
+                cat "$comments_tmp"
+              } >> "$tmp" || {
+                rm -f "$comments_tmp"
+                printf '!! could not append comments for PR #%s\n' "$n" >&2
+                return 1
+              }
+            fi
+
+            rm -f "$comments_tmp"
+          }
+
+          cleanup_markdown() {
+            local tmp="$1"
+
+            sed -i '/^Useful? React with /d' "$tmp" || return 1
+            sed -i '/^\[View comment\](.*)$/d' "$tmp" || return 1
+            perl -0pi -e 's/\*\*<sub><sub>!\[(P\d+) Badge\]\([^)]+\)<\/sub><\/sub>\s+([^*\n]+)\*\*/**$1: $2**/g' "$tmp" || return 1
+            perl -0pi -e 's/\n#### @[^\n]+\n\nresolved\n(?:\n+)?(?=---\n|### |\#\# |\z)//g' "$tmp" || return 1
+            perl -0pi -e 's/\n{3,}/\n\n/g' "$tmp" || return 1
+          }
+
           fetch_issue() {
             local n="$1"
             local dir="$2"
             local state
             local tmp
 
-            stage "context #$n"
+            stage "issue #$n"
 
             state=$(gh issue view "$n" --json state -q '.state' 2>/dev/null) || {
               printf '!! could not fetch issue #%s\n' "$n" >&2
@@ -60,32 +140,33 @@ aliases:
             tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-${n}.XXXXXX") || return 1
 
             gh issue view "$n" \
-              --json number,title,url,state,labels,assignees,author,createdAt,body,comments \
+              --json number,title,url,state,labels,assignees,author,createdAt,body \
               --template '{{printf "# Issue #%v: %s\n\n" .number .title}}- **URL:** {{.url}}
         - **State:** {{.state}}
         - **Author:** {{.author.login}}
         - **Created:** {{.createdAt}}
-        - **Labels:** {{if .labels}}{{range $i, $label := .labels}}{{if $i}}, {{end}}{{$label.name}}{{end}}{{else}}none{{end}}
-        - **Assignees:** {{if .assignees}}{{range $i, $assignee := .assignees}}{{if $i}}, {{end}}{{$assignee.login}}{{end}}{{else}}unassigned{{end}}
+        {{if .labels}}- **Labels:** {{range $i, $label := .labels}}{{if $i}}, {{end}}{{$label.name}}{{end}}
+        {{end}}{{if .assignees}}- **Assignees:** {{range $i, $assignee := .assignees}}{{if $i}}, {{end}}{{$assignee.login}}{{end}}
+        {{end}}
 
         ---
 
         ## Description
 
-        {{if .body}}{{.body}}{{else}}No description provided.{{end}}{{if .comments}}
-
-        ---
-
-        ## Comments
-
-        {{range .comments}}### @{{.author.login}} ({{.createdAt}})
-
-        {{.body}}
-
-        ---
-        {{end}}{{end}}' > "$tmp" || {
+        {{if .body}}{{.body}}{{else}}No description provided.{{end}}' > "$tmp" || {
               rm -f "$tmp"
               printf '!! render failed for issue #%s\n' "$n" >&2
+              return 1
+            }
+
+            append_issue_comments "$n" "$tmp" || {
+              rm -f "$tmp"
+              return 1
+            }
+
+            cleanup_markdown "$tmp" || {
+              rm -f "$tmp"
+              printf '!! could not clean markdown for issue #%s\n' "$n" >&2
               return 1
             }
 
@@ -98,19 +179,303 @@ aliases:
             printf '   saved %s/%s.md\n' "$dir" "$n"
           }
 
+          fetch_pr() {
+            local n="$1"
+            local dir="$2"
+            local state
+            local tmp
+            local reviews_tmp
+            local review_threads_tmp
+            local review_threads_resolved_tmp
+            local review_threads_open_tmp
+            local last_content
+
+            stage "pr #$n"
+
+            state=$(gh pr view "$n" --json state -q '.state' 2>/dev/null) || {
+              printf '!! could not fetch PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            if [ "$state" = "CLOSED" ] || [ "$state" = "MERGED" ]; then
+              rm -f "$dir/${n}.md"
+              printf '   %s, removed %s/%s.md\n' "$(echo "$state" | tr '[:upper:]' '[:lower:]')" "$dir" "$n"
+              return 0
+            fi
+
+            mkdir -p "$dir" || return 1
+            tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-${n}.XXXXXX") || return 1
+
+            gh pr view "$n" \
+              --json number,title,url,state,labels,assignees,author,createdAt,headRefName,baseRefName,body \
+              --template '{{printf "# PR #%v: %s\n\n" .number .title}}- **URL:** {{.url}}
+        - **State:** {{.state}}
+        - **Author:** {{.author.login}}
+        - **Created:** {{.createdAt}}
+        - **Base:** {{.baseRefName}} ← {{.headRefName}}
+        {{if .labels}}- **Labels:** {{range $i, $label := .labels}}{{if $i}}, {{end}}{{$label.name}}{{end}}
+        {{end}}{{if .assignees}}- **Assignees:** {{range $i, $assignee := .assignees}}{{if $i}}, {{end}}{{$assignee.login}}{{end}}
+        {{end}}
+
+        ---
+
+        ## Description
+
+        {{if .body}}{{.body}}{{else}}No description provided.{{end}}' > "$tmp" || {
+              rm -f "$tmp"
+              printf '!! render failed for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            append_pr_comments "$n" "$tmp" || {
+              rm -f "$tmp"
+              return 1
+            }
+
+            reviews_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-pr-reviews-${n}.XXXXXX") || {
+              rm -f "$tmp"
+              return 1
+            }
+
+            gh pr view "$n" --json reviews \
+              --template '{{range .reviews}}{{if and (ne .author.login "chatgpt-codex-connector") .body}}### @{{.author.login}} — {{.state}} ({{.submittedAt}})
+
+        {{if .body}}{{.body}}{{else}}*(no comment)*{{end}}
+
+        ---
+        {{end}}{{end}}' > "$reviews_tmp" || {
+              rm -f "$tmp" "$reviews_tmp"
+              printf '!! could not fetch reviews for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            if [ -s "$reviews_tmp" ]; then
+              {
+                printf '\n---\n\n## Reviews\n\n'
+                cat "$reviews_tmp"
+              } >> "$tmp" || {
+                rm -f "$tmp" "$reviews_tmp"
+                printf '!! could not append reviews for PR #%s\n' "$n" >&2
+                return 1
+              }
+            fi
+
+            rm -f "$reviews_tmp"
+
+            review_threads_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-pr-threads-${n}.XXXXXX") || {
+              rm -f "$tmp"
+              return 1
+            }
+            review_threads_resolved_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-pr-threads-resolved-${n}.XXXXXX") || {
+              rm -f "$tmp" "$review_threads_tmp"
+              return 1
+            }
+            review_threads_open_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-pr-threads-open-${n}.XXXXXX") || {
+              rm -f "$tmp" "$review_threads_tmp" "$review_threads_resolved_tmp"
+              return 1
+            }
+
+            gh api graphql --paginate \
+              -f query='
+        query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100, after: $endCursor) {
+                nodes {
+                  isResolved
+                  isOutdated
+                  path
+                  line
+                  originalLine
+                  comments(first: 100) {
+                    nodes {
+                      author {
+                        login
+                      }
+                      body
+                      createdAt
+                      url
+                    }
+                  }
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+              }
+            }
+          }
+        }' \
+              -F owner='{owner}' \
+              -F repo='{repo}' \
+              -F number="$n" \
+              --template '{{range .data.repository.pullRequest.reviewThreads.nodes}}{{if or .isResolved .isOutdated}}### `{{.path}}`{{if .line}}:{{.line}}{{else if .originalLine}}:{{.originalLine}}{{end}}
+
+        - **Status:** {{if .isResolved}}resolved{{else}}open{{end}}{{if .isOutdated}}, outdated{{end}}
+
+        {{range .comments.nodes}}#### @{{if .author}}{{.author.login}}{{else}}ghost{{end}} ({{.createdAt}})
+
+        {{if .body}}{{.body}}{{else}}*(no comment)*{{end}}{{if .url}}
+
+        [View comment]({{.url}})
+        {{end}}
+
+        {{end}}---
+        {{end}}{{end}}' > "$review_threads_resolved_tmp" || {
+              rm -f "$tmp" "$review_threads_tmp" "$review_threads_resolved_tmp" "$review_threads_open_tmp"
+              printf '!! could not fetch resolved/outdated review threads for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            gh api graphql --paginate \
+              -f query='
+        query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100, after: $endCursor) {
+                nodes {
+                  isResolved
+                  isOutdated
+                  path
+                  line
+                  originalLine
+                  comments(first: 100) {
+                    nodes {
+                      author {
+                        login
+                      }
+                      body
+                      createdAt
+                      url
+                    }
+                  }
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+              }
+            }
+          }
+        }' \
+              -F owner='{owner}' \
+              -F repo='{repo}' \
+              -F number="$n" \
+              --template '{{range .data.repository.pullRequest.reviewThreads.nodes}}{{if not (or .isResolved .isOutdated)}}### `{{.path}}`{{if .line}}:{{.line}}{{else if .originalLine}}:{{.originalLine}}{{end}}
+
+        - **Status:** open
+
+        {{range .comments.nodes}}#### @{{if .author}}{{.author.login}}{{else}}ghost{{end}} ({{.createdAt}})
+
+        {{if .body}}{{.body}}{{else}}*(no comment)*{{end}}{{if .url}}
+
+        [View comment]({{.url}})
+        {{end}}
+
+        {{end}}---
+        {{end}}{{end}}' > "$review_threads_open_tmp" || {
+              rm -f "$tmp" "$review_threads_tmp" "$review_threads_resolved_tmp" "$review_threads_open_tmp"
+              printf '!! could not fetch open review threads for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            {
+              if [ -s "$review_threads_resolved_tmp" ]; then
+                printf '### Resolved / Outdated\n\n'
+                cat "$review_threads_resolved_tmp"
+              fi
+              if [ -s "$review_threads_open_tmp" ]; then
+                if [ -s "$review_threads_resolved_tmp" ]; then
+                  printf '\n'
+                fi
+                printf '### Open\n\n'
+                cat "$review_threads_open_tmp"
+              fi
+            } > "$review_threads_tmp" || {
+              rm -f "$tmp" "$review_threads_tmp" "$review_threads_resolved_tmp" "$review_threads_open_tmp"
+              printf '!! could not build review threads for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            rm -f "$review_threads_resolved_tmp" "$review_threads_open_tmp"
+
+            if [ -s "$review_threads_tmp" ]; then
+              last_content=$(grep -v '^$' "$tmp" | tail -n 1)
+              {
+                if [ "$last_content" != "---" ]; then
+                  printf '\n---'
+                fi
+                printf '\n\n## Review Threads\n\n'
+                cat "$review_threads_tmp"
+              } >> "$tmp" || {
+                rm -f "$tmp" "$review_threads_tmp"
+                printf '!! could not append review threads for PR #%s\n' "$n" >&2
+                return 1
+              }
+            fi
+
+            rm -f "$review_threads_tmp"
+
+            cleanup_markdown "$tmp" || {
+              rm -f "$tmp"
+              printf '!! could not clean markdown for PR #%s\n' "$n" >&2
+              return 1
+            }
+
+            mv "$tmp" "$dir/${n}.md" || {
+              rm -f "$tmp"
+              printf '!! could not write %s/%s.md\n' "$dir" "$n" >&2
+              return 1
+            }
+
+            printf '   saved %s/%s.md\n' "$dir" "$n"
+          }
+
+          fetch_item() {
+            local n="$1"
+            local custom_dir="$2"
+            local kind
+
+            kind=$(detect_type "$n") || {
+              printf '!! could not detect type for #%s\n' "$n" >&2
+              return 1
+            }
+
+            if [ "$kind" = "pr" ]; then
+              fetch_pr "$n" "${custom_dir:-$repo_root/ctx/prs}"
+            else
+              fetch_issue "$n" "${custom_dir:-$repo_root/ctx/issues}"
+            fi
+          }
+
           if [ -n "$num" ]; then
-            fetch_issue "$num" "$outdir"
+            fetch_item "$num" "$outdir"
           else
             found=0
-            for f in "$outdir"/*.md; do
-              [ -f "$f" ] || continue
-              n=$(basename "$f" .md)
-              fetch_issue "$n" "$outdir" || return 1
-              found=1
-            done
+            if [ -n "$outdir" ]; then
+              for f in "$outdir"/*.md; do
+                [ -f "$f" ] || continue
+                n=$(basename "$f" .md)
+                fetch_item "$n" "$outdir" || return 1
+                found=1
+              done
+            else
+              for f in "$repo_root/ctx/issues"/*.md; do
+                [ -f "$f" ] || continue
+                n=$(basename "$f" .md)
+                fetch_issue "$n" "$repo_root/ctx/issues" || return 1
+                found=1
+              done
+              for f in "$repo_root/ctx/prs"/*.md; do
+                [ -f "$f" ] || continue
+                n=$(basename "$f" .md)
+                fetch_pr "$n" "$repo_root/ctx/prs" || return 1
+                found=1
+              done
+            fi
             if [ "$found" -eq 0 ]; then
-              printf '!! no issue files found in %s\n' "$outdir" >&2
-              echo "Usage: gh ctx <issue-number> [--context <path>]" >&2
+              printf '!! no context files found in %s\n' "${outdir:-$repo_root/ctx/{issues,prs}}" >&2
+              echo "Usage: gh ctx <number> [--context <path>]" >&2
               return 1
             fi
           fi
@@ -121,6 +486,40 @@ aliases:
         !f() {
           stage() {
             printf '==> %s\n' "$1"
+          }
+
+          existing_branch_for_issue() {
+            local num="$1"
+            local preferred="$2"
+            local candidate
+
+            for candidate in \
+              "${preferred}/dev-${num}" \
+              "feat/dev-${num}" \
+              "fix/dev-${num}" \
+              "task/dev-${num}"
+            do
+              [ -n "$candidate" ] || continue
+              if git show-ref --verify --quiet "refs/heads/$candidate"; then
+                printf 'local:%s\n' "$candidate"
+                return 0
+              fi
+            done
+
+            for candidate in \
+              "${preferred}/dev-${num}" \
+              "feat/dev-${num}" \
+              "fix/dev-${num}" \
+              "task/dev-${num}"
+            do
+              [ -n "$candidate" ] || continue
+              if git show-ref --verify --quiet "refs/remotes/origin/$candidate"; then
+                printf 'remote:%s\n' "$candidate"
+                return 0
+              fi
+            done
+
+            return 1
           }
 
           if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
@@ -145,12 +544,27 @@ aliases:
               *) prefix="feat" ;;
             esac
 
-            branch="${prefix}/dev-$num"
-            printf '   create %s\n' "$branch"
-            if [ -n "$base" ]; then
-              gh issue develop "$num" --name "$branch" --base "$base" --checkout || return 1
+            branch_info=$(existing_branch_for_issue "$num" "$prefix")
+            if [ -n "$branch_info" ]; then
+              branch="${branch_info#*:}"
+              case "$branch_info" in
+                local:*)
+                  printf '   checkout existing %s\n' "$branch"
+                  git checkout "$branch" || return 1
+                  ;;
+                remote:*)
+                  printf '   checkout existing origin/%s\n' "$branch"
+                  git checkout --track "origin/$branch" || return 1
+                  ;;
+              esac
             else
-              gh issue develop "$num" --name "$branch" --checkout || return 1
+              branch="${prefix}/dev-$num"
+              printf '   create %s\n' "$branch"
+              if [ -n "$base" ]; then
+                gh issue develop "$num" --name "$branch" --base "$base" --checkout || return 1
+              else
+                gh issue develop "$num" --name "$branch" --checkout || return 1
+              fi
             fi
           fi
 
@@ -165,7 +579,8 @@ aliases:
           }
 
           if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-            echo "Usage: gh solve <issue-number> [base-branch] [--note \"extra context\"]"
+            echo "Usage: gh solve <issue-number> [base-branch] [note]"
+            echo "       gh solve <issue-number> [base-branch] --note \"extra context\""
             return 0
           fi
 
@@ -173,6 +588,8 @@ aliases:
           num=""
           base=""
           note=""
+          arg2=""
+          arg3=""
 
           while [ $# -gt 0 ]; do
             case "$1" in
@@ -183,13 +600,36 @@ aliases:
               *)
                 if [ -z "$num" ]; then
                   num="$1"
-                elif [ -z "$base" ]; then
-                  base="$1"
+                elif [ -z "$arg2" ]; then
+                  arg2="$1"
+                elif [ -z "$arg3" ]; then
+                  arg3="$1"
+                else
+                  printf '!! too many positional arguments for gh solve\n' >&2
+                  printf '   usage: gh solve <issue-number> [base-branch] [note]\n' >&2
+                  return 1
                 fi
                 shift
                 ;;
             esac
           done
+
+          if [ -n "$arg3" ]; then
+            base="$arg2"
+            if [ -n "$note" ]; then
+              printf '!! note provided twice for gh solve\n' >&2
+              return 1
+            fi
+            note="$arg3"
+          elif [ -n "$arg2" ]; then
+            if [ -n "$note" ]; then
+              base="$arg2"
+            elif git show-ref --verify --quiet "refs/heads/$arg2" || git show-ref --verify --quiet "refs/remotes/origin/$arg2"; then
+              base="$arg2"
+            else
+              note="$arg2"
+            fi
+          fi
 
           stage "solve #$num"
 
@@ -214,6 +654,173 @@ aliases:
         4. Verify your changes compile/run correctly and don't break existing functionality.
 
         Search online for documentation or API references if needed. If anything in the issue is ambiguous, state your assumptions before proceeding."
+
+          if [ -n "$note" ]; then
+            prompt="${prompt}
+
+        Additional context: ${note}"
+          fi
+
+          codex --full-auto --search "$prompt"
+        }
+
+        f "$@"
+    follow: |-
+        !f() {
+          stage() {
+            printf '==> %s\n' "$1"
+          }
+
+          infer_pr_number() {
+            local branch="$1"
+            local matches
+            local count
+
+            matches=$(gh api --paginate "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq ".[] | select(.head.ref == \"$branch\") | .number" 2>/dev/null) || return 1
+            count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
+
+            case "$count" in
+              0) return 2 ;;
+              1)
+                printf '%s\n' "$matches" | sed '/^$/d' | head -n1
+                ;;
+              *)
+                return 3
+                ;;
+            esac
+          }
+
+          if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+            echo "Usage: gh follow [pr-number] [note]"
+            echo "       gh follow [pr-number] --note \"extra context\""
+            return 0
+          fi
+
+          repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          current_branch=$(git branch --show-current 2>/dev/null)
+          pr_num=""
+          note=""
+          inferred=0
+
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --note)
+                note="$2"
+                shift 2
+                ;;
+              *)
+                if [ -z "$pr_num" ]; then
+                  pr_num="$1"
+                elif [ -z "$note" ]; then
+                  note="$1"
+                fi
+                shift
+                ;;
+            esac
+          done
+
+          if [ -z "$pr_num" ]; then
+            [ -n "$current_branch" ] || {
+              printf '!! could not infer a PR because the current branch is unknown\n' >&2
+              printf '   pass a PR number explicitly: gh follow <pr-number>\n' >&2
+              return 1
+            }
+
+            stage "infer pr"
+
+            pr_num=$(infer_pr_number "$current_branch")
+            case $? in
+              0)
+                inferred=1
+                printf '   inferred PR #%s from branch %s\n' "$pr_num" "$current_branch"
+                ;;
+              2)
+                printf '!! no open PR found for branch %s\n' "$current_branch" >&2
+                printf '   pass a PR number explicitly: gh follow <pr-number>\n' >&2
+                return 1
+                ;;
+              3)
+                printf '!! multiple open PRs matched branch %s\n' "$current_branch" >&2
+                printf '   pass a PR number explicitly: gh follow <pr-number>\n' >&2
+                return 1
+                ;;
+              *)
+                printf '!! could not infer PR from branch %s\n' "$current_branch" >&2
+                return 1
+                ;;
+            esac
+          fi
+
+          stage "follow #$pr_num"
+
+          pr_state=$(gh pr view "$pr_num" --json state -q '.state' 2>/dev/null) || {
+            printf '!! could not fetch PR #%s\n' "$pr_num" >&2
+            return 1
+          }
+          pr_branch=$(gh pr view "$pr_num" --json headRefName -q '.headRefName' 2>/dev/null) || {
+            printf '!! could not fetch PR #%s\n' "$pr_num" >&2
+            return 1
+          }
+
+          if [ "$pr_state" != "OPEN" ]; then
+            printf '!! PR #%s is %s; gh follow only works for open PRs\n' "$pr_num" "$(printf '%s' "$pr_state" | tr '[:upper:]' '[:lower:]')" >&2
+            return 1
+          fi
+
+          if [ -n "$current_branch" ] && [ "$current_branch" != "$pr_branch" ]; then
+            printf '!! warning: current branch %s does not match PR #%s head %s\n' "$current_branch" "$pr_num" "$pr_branch" >&2
+            printf '   continuing on the current branch without switching\n' >&2
+          elif [ -n "$current_branch" ] && [ "$inferred" -eq 0 ]; then
+            printf '   using current branch %s\n' "$current_branch"
+          fi
+
+          gh ctx "$pr_num" || return 1
+
+          if [ ! -s "$repo_root/ctx/prs/${pr_num}.md" ]; then
+            printf '!! missing PR context at %s/ctx/prs/%s.md\n' "$repo_root" "$pr_num" >&2
+            return 1
+          fi
+
+          issue_nums=$(gh pr view "$pr_num" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>/dev/null) || {
+            printf '!! could not fetch linked issues for PR #%s\n' "$pr_num" >&2
+            return 1
+          }
+
+          issue_context=""
+          issue_prompt=""
+
+          if [ -n "$issue_nums" ]; then
+            stage "issues"
+            for issue_num in $issue_nums; do
+              gh ctx "$issue_num" || return 1
+              if [ ! -s "$repo_root/ctx/issues/${issue_num}.md" ]; then
+                printf '!! missing issue context at %s/ctx/issues/%s.md\n' "$repo_root" "$issue_num" >&2
+                return 1
+              fi
+              issue_context="${issue_context} ctx/issues/${issue_num}.md"
+            done
+
+            issue_context=$(printf '%s' "$issue_context" | sed 's/^ //')
+            issue_prompt=" Also read ${issue_context} for the original issue requirements and discussion."
+          fi
+
+          stage "codex"
+
+          prompt="Read ctx/prs/${pr_num}.md — it contains the PR description, metadata, top-level comments, and review threads.${issue_prompt}
+
+        You are already on the working branch${current_branch:+ ${current_branch}}. Stay on this branch. Do not create a new branch and do not switch branches.
+
+        There may already be in-progress local changes. Work with the current state of the tree and preserve useful existing work.
+
+        Address the latest PR feedback and any new PR details:
+
+        1. Study the PR context thoroughly. Prioritize open review threads; use resolved/outdated threads as background.
+        2. If linked issue context is present, keep the implementation aligned with the original issue requirements.
+        3. Explore the codebase and the current branch state to understand what has already been changed.
+        4. Implement the minimum high-quality changes needed to address the feedback. Keep changes focused, maintainable, and consistent with the existing codebase.
+        5. Verify the changes compile/run correctly and do not break existing functionality.
+
+        Search online for documentation or API references if needed. If anything is ambiguous, state your assumptions before proceeding."
 
           if [ -n "$note" ]; then
             prompt="${prompt}
