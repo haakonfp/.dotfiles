@@ -82,7 +82,7 @@ aliases:
             comments_tmp=$(mktemp "${TMPDIR:-/tmp}/gh-ctx-pr-comments-${n}.XXXXXX") || return 1
 
             gh pr view "$n" --json comments \
-              --template '{{range .comments}}{{if and .body (ne .body "@codex review") (ne .body "@codex address that feedback")}}### @{{.author.login}} ({{.createdAt}})
+              --template '{{range .comments}}{{if and .body (ne .body "@codex review") (ne .body "@codex address that feedback") (not (and (eq .author.login "github-actions") (hasPrefix "#### Terraform Plan" .body)))}}### @{{.author.login}} ({{.createdAt}})
 
         {{.body}}
 
