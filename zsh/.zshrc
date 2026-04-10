@@ -176,3 +176,8 @@ eval "$(zoxide init zsh)"
 
 # opencode
 export PATH=/home/hfp/.opencode/bin:$PATH
+
+# android/flutter
+export ANDROID_HOME="$HOME/android-sdk"
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+export PATH="$HOME/flutter/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"

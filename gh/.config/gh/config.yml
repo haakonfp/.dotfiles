@@ -488,36 +488,63 @@ aliases:
             printf '==> %s\n' "$1"
           }
 
+          issue_type_name() {
+            local num="$1"
+            local type_name=""
+
+            type_name=$(gh api "repos/{owner}/{repo}/issues/$num" --jq '.type.name // .type // empty' 2>/dev/null)
+            if [ -z "$type_name" ]; then
+              type_name=$(gh api graphql \
+                -F owner='{owner}' \
+                -F repo='{repo}' \
+                -F number="$num" \
+                -f query='
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      issue(number: $number) {
+                        issueType {
+                          name
+                        }
+                      }
+                    }
+                  }
+                ' \
+                --jq '.data.repository.issue.issueType.name // empty' 2>/dev/null)
+            fi
+
+            printf '%s\n' "$type_name"
+          }
+
+          branch_prefix_for_issue() {
+            local num="$1"
+            local type_name
+            local normalized
+
+            type_name=$(issue_type_name "$num")
+            normalized=$(printf '%s' "$type_name" | tr '[:upper:]' '[:lower:]')
+
+            case "$normalized" in
+              bug) printf 'fix\n' ;;
+              task) printf 'task\n' ;;
+              feature) printf 'feat\n' ;;
+              *) printf 'feat\n' ;;
+            esac
+          }
+
           existing_branch_for_issue() {
             local num="$1"
             local preferred="$2"
-            local candidate
+            local candidate="${preferred}/dev-${num}"
 
-            for candidate in \
-              "${preferred}/dev-${num}" \
-              "feat/dev-${num}" \
-              "fix/dev-${num}" \
-              "task/dev-${num}"
-            do
-              [ -n "$candidate" ] || continue
-              if git show-ref --verify --quiet "refs/heads/$candidate"; then
-                printf 'local:%s\n' "$candidate"
-                return 0
-              fi
-            done
+            if git show-ref --verify --quiet "refs/heads/$candidate"; then
+              printf 'local:%s\n' "$candidate"
+              return 0
+            fi
 
-            for candidate in \
-              "${preferred}/dev-${num}" \
-              "feat/dev-${num}" \
-              "fix/dev-${num}" \
-              "task/dev-${num}"
-            do
-              [ -n "$candidate" ] || continue
-              if git show-ref --verify --quiet "refs/remotes/origin/$candidate"; then
-                printf 'remote:%s\n' "$candidate"
-                return 0
-              fi
-            done
+            if git show-ref --verify --quiet "refs/remotes/origin/$candidate"; then
+              printf 'remote:%s\n' "$candidate"
+              return 0
+            fi
 
             return 1
           }
@@ -537,12 +564,7 @@ aliases:
             printf '   checkout %s\n' "$branch"
             git checkout "$branch" || return 1
           else
-            itype=$(gh issue view "$num" --json type -q '.type.name // empty' 2>/dev/null)
-            case "$itype" in
-              Bug) prefix="fix" ;;
-              Task) prefix="task" ;;
-              *) prefix="feat" ;;
-            esac
+            prefix=$(branch_prefix_for_issue "$num")
 
             branch_info=$(existing_branch_for_issue "$num" "$prefix")
             if [ -n "$branch_info" ]; then
