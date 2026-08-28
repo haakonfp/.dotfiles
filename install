@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env sh
 
 STOW_FOLDERS="zsh,bash,nvim,gitconfig,gh,starship,tmux"
 

@@ -8,9 +8,7 @@ if [ $? != 0 ]; then
     tmux new-session -d -s $SESSION_NAME -n "vim"
     tmux new-window -t $SESSION_NAME:1 -n "run"
     tmux new-window -t $SESSION_NAME:2 -n "browse"
-    tmux new-window -t $SESSION_NAME:3 -n "opencode"
-    tmux send-keys -t $SESSION_NAME:opencode "opencode" C-m
-    tmux new-window -t $SESSION_NAME:4 -n "codex"
+    tmux new-window -t $SESSION_NAME:3 -n "codex"
     tmux send-keys -t $SESSION_NAME:codex "clear && codex" C-m
 	tmux select-window -t $SESSION_NAME:0
 else
