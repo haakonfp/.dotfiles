@@ -9,3 +9,4 @@
 - Bootstrap installs `foot`, `brave-bin`, and `spotify` through `omarchy pkg add`. With configuration-only installation, install these prerequisites separately; an absent Brave leaves existing browser MIME defaults intact and prints a warning.
 - Confirm the shortcuts launch the intended apps (Foot, Brave, Spotify, default agent), and keep the downloads bookmark pointed at the current user's home.
 - Keep monitor scaling and device-specific settings local; preserve the shared keyboard/Compose and night-light preferences.
+- Match Foot's clear 90% background opacity with blur off. On Omarchy with the window-opacity modes, select `omarchy hyprland window transparency transparent`, not `glassy`; installation backs up and removes old glassy/opaque flags.

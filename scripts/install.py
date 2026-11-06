@@ -146,6 +146,15 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
     def virtual_missing(relative):
         return any(relative == item or relative.startswith(item + '/') for item in blockers)
     operations = [dict(path=relative, kind='remove') for relative in sorted(blockers)]
+    if profile == 'omarchy':
+        # Match the reference PC's plain transparency. These state flags load
+        # after user Hyprland config and can otherwise retain frosted glass or
+        # opaque mode from the destination. Back them up like other conflicts.
+        for name in ('window-glassy.lua', 'window-opaque.lua'):
+            relative = '.local/state/omarchy/toggles/hypr/' + name
+            if exists(home / relative):
+                validate_parent(home, home / relative)
+                operations.append(dict(path=relative, kind='remove'))
     if not epic and (REPO / 'epic').is_dir():
         # Opting out removes only our gate/launch links, never private AI homes
         # or account files. An ordinary WSL install cannot retain active routing.

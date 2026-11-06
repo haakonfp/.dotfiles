@@ -88,6 +88,29 @@ class InstallTests(unittest.TestCase):
         self.assertEqual((self.home / 'Downloads/keep.txt').read_text(), 'keep')
         self.assertTrue((self.home / 'media/screenshots').is_dir())
 
+    def test_omarchy_transparency_replaces_glassy_or_opaque_mode_and_restores(self):
+        toggles = self.home / '.local/state/omarchy/toggles/hypr'
+        toggles.mkdir(parents=True)
+        for name in ('window-glassy.lua', 'window-opaque.lua', 'no-animations.lua'):
+            (toggles / name).write_text('-- original ' + name)
+        self.run_install('--profile', 'omarchy')
+        self.assertTrue((toggles / 'window-glassy.lua').is_file(), 'preview changed transparency')
+        self.run_install('--profile', 'omarchy', '--apply')
+        self.assertFalse((toggles / 'window-glassy.lua').exists())
+        self.assertFalse((toggles / 'window-opaque.lua').exists())
+        self.assertEqual((toggles / 'no-animations.lua').read_text(), '-- original no-animations.lua')
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.run_install('--restore', str(manifest), '--apply')
+        for name in ('window-glassy.lua', 'window-opaque.lua'):
+            self.assertEqual((toggles / name).read_text(), '-- original ' + name)
+
+    def test_wsl_install_leaves_desktop_transparency_alone(self):
+        flag = self.home / '.local/state/omarchy/toggles/hypr/window-glassy.lua'
+        flag.parent.mkdir(parents=True)
+        flag.write_text('-- original mode')
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(flag.read_text(), '-- original mode')
+
     def test_absent_brave_preserves_browser_defaults_and_warns(self):
         config = self.home / '.config'
         config.mkdir()
@@ -263,8 +286,14 @@ class InstallTests(unittest.TestCase):
                                 env=env, text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         if shutil.which('hyprland'):
-            result = subprocess.run(['hyprland', '--verify-config', '--config', str(self.home / '.config/hypr/hyprland.lua')],
-                                    env=env, text=True, capture_output=True, timeout=15)
+            # Omarchy 4.5's cold-start cursor hook needs a running compositor;
+            # disable that startup effect in this headless parsing fixture.
+            verify_env = dict(env, HYPRLAND_INSTANCE_SIGNATURE='dotfiles-config-verification')
+            verify_config = self.home / 'verify.lua'
+            verify_config.write_text('omarchy_startup_cursor_pending = false\ndofile(' +
+                                     repr(str(self.home / '.config/hypr/hyprland.lua')) + ')\n')
+            result = subprocess.run(['hyprland', '--verify-config', '--config', str(verify_config)],
+                                    env=verify_env, text=True, capture_output=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_directory_link_migration_preserves_unselected_private_preferences(self):
