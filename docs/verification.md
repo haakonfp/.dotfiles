@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **95 tests passed**, including a private tmux server
+- Full expanded suite: **101 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -49,6 +49,13 @@ The second platform review found and fixed gaps not covered by the original
 - Login migration covers a copied managed loader, a link from another checkout,
   a changed personal initializer with repeat/restore, and a custom profile that
   must not be saved as its own initializer.
+- Git migration covers copied shared configs in both global locations, a link
+  from another checkout, and changed private settings. Real Git queries verify
+  identity/helper precedence and relative includes, with repeat and rollback.
+  Configs may include their saved predecessors without creating an include
+  loop, including migration from a linked Git configuration directory.
+  Private dependency copies retain binary contents/executable permissions and
+  a forced partial-copy failure restores the original directory link.
 
 Omarchy 4.5's cold-start cursor hook is disabled only in the headless Hyprland
 parsing fixture, where there is no running compositor for that startup effect.

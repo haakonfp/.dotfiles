@@ -245,6 +245,139 @@ class InstallTests(unittest.TestCase):
             result = subprocess.run(['git', 'config', '--get-all', key], cwd=self.home, env=env, text=True, capture_output=True)
             self.assertEqual(result.stdout.splitlines(), want)
 
+    def git_values(self, key):
+        env = dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
+                   GIT_CONFIG_NOSYSTEM='1')
+        env.pop('GIT_CONFIG_GLOBAL', None)
+        result = subprocess.run(['git', 'config', '--global', '--includes', '--get-all', key],
+                                cwd=self.home, env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.splitlines()
+
+    def test_copied_shared_git_configs_keep_saved_private_configs_active(self):
+        gitdir = self.home / '.config/git'
+        gitdir.mkdir(parents=True)
+        shared = (REPO / 'gitconfig/.config/git/config').read_bytes()
+        (self.home / '.gitconfig').write_bytes(shared)
+        (gitdir / 'config').write_bytes(shared)
+        root_private = '[user]\n name = Root Private\n[credential]\n helper = root-private\n'
+        xdg_private = '[user]\n name = XDG Private\n[credential]\n helper = xdg-private\n'
+        (self.home / '.gitconfig.before-dotfiles').write_text(root_private)
+        (gitdir / 'previous.config').write_text(xdg_private)
+        self.run_install('--profile', 'omarchy')
+        self.run_install('--profile', 'omarchy', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['XDG Private', 'Root Private'])
+        self.assertEqual(self.git_values('credential.helper'), ['xdg-private', 'root-private'])
+        self.assertEqual((self.home / '.gitconfig.before-dotfiles').read_text(), root_private)
+        self.assertEqual((gitdir / 'previous.config').read_text(), xdg_private)
+
+    def test_git_link_from_other_checkout_keeps_saved_private_config(self):
+        gitdir = self.home / '.config/git'
+        gitdir.mkdir(parents=True)
+        old_config = Path(self.tmp.name) / 'old checkout/gitconfig/.config/git/config'
+        old_config.parent.mkdir(parents=True)
+        shared = (REPO / 'gitconfig/.config/git/config').read_bytes()
+        old_config.write_bytes(shared)
+        (gitdir / 'config').symlink_to(old_config)
+        saved = '[user]\n name = Private User\n'
+        (gitdir / 'previous.config').write_text(saved)
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Private User'])
+        self.assertEqual(old_config.read_bytes(), shared)
+        self.assertEqual((gitdir / 'previous.config').read_text(), saved)
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.run_install('--restore', str(manifest), '--apply')
+        self.assertEqual((gitdir / 'config').resolve(), old_config)
+
+    def test_changed_private_git_configs_keep_relative_includes_and_rollback(self):
+        gitdir = self.home / '.config/git'
+        gitdir.mkdir(parents=True)
+        root_current = '[include]\n path = root-private.conf\n'
+        xdg_current = '[include]\n path = xdg-private.conf\n'
+        root_old = '[user]\n name = Older Root\n'
+        xdg_old = '[user]\n name = Older XDG\n'
+        (self.home / 'root-private.conf').write_text('[user]\n name = New Root\n[credential]\n helper = new-root\n')
+        (gitdir / 'xdg-private.conf').write_text('[user]\n name = New XDG\n[credential]\n helper = new-xdg\n')
+        (self.home / '.gitconfig').write_text(root_current)
+        (self.home / '.gitconfig.before-dotfiles').write_text(root_old)
+        (gitdir / 'config').write_text(xdg_current)
+        (gitdir / 'previous.config').write_text(xdg_old)
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['New XDG', 'New Root'])
+        self.assertEqual(self.git_values('credential.helper'), ['new-xdg', 'new-root'])
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.assertEqual((self.home / '.gitconfig.before-dotfiles').read_text(), root_old)
+        self.assertEqual((gitdir / 'previous.config').read_text(), xdg_old)
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(len(list(manifest.parent.parent.glob('*/manifest.json'))), 1)
+        self.run_install('--restore', str(manifest), '--apply')
+        for path, content in [('.gitconfig', root_current), ('.gitconfig.before-dotfiles', root_old),
+                              ('.config/git/config', xdg_current), ('.config/git/previous.config', xdg_old)]:
+            self.assertEqual((self.home / path).read_text(), content)
+
+    def test_current_git_configs_can_include_their_saved_predecessors(self):
+        gitdir = self.home / '.config/git'
+        gitdir.mkdir(parents=True)
+        (self.home / '.gitconfig.before-dotfiles').write_text('[user]\n name = Root Original\n')
+        (gitdir / 'previous.config').write_text('[credential]\n helper = xdg-original\n')
+        (self.home / '.gitconfig').write_text('[include]\n path = .gitconfig.before-dotfiles\n')
+        (gitdir / 'config').write_text('[include]\n path = previous.config\n')
+        self.assertEqual(self.git_values('user.name'), ['Root Original'])
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Root Original'])
+        self.assertEqual(self.git_values('credential.helper'), ['xdg-original'])
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Root Original'])
+        self.assertEqual(len(list(manifest.parent.parent.glob('*/manifest.json'))), 1)
+        self.run_install('--restore', str(manifest), '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Root Original'])
+
+    def test_git_directory_link_keeps_saved_predecessor_available(self):
+        old_dir = Path(self.tmp.name) / 'old Git directory'
+        old_dir.mkdir()
+        (old_dir / 'config').write_text('[include]\n path = identity.conf\n')
+        (old_dir / 'previous.config').write_text('[user]\n name = Older User\n')
+        (old_dir / 'identity.conf').write_text('[user]\n name = Original User\n')
+        helper = old_dir / 'credential-helper'
+        helper.write_bytes(b'#!/bin/sh\nexit 0\n')
+        helper.chmod(0o755)
+        (old_dir / 'private-data').write_bytes(b'\x00\xfffixture')
+        (self.home / '.config').mkdir()
+        (self.home / '.config/git').symlink_to(old_dir, target_is_directory=True)
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Original User'])
+        self.assertEqual((self.home / '.config/git/credential-helper').stat().st_mode & 0o777, 0o755)
+        self.assertEqual((self.home / '.config/git/private-data').read_bytes(), b'\x00\xfffixture')
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Original User'])
+        self.assertEqual(len(list(manifest.parent.parent.glob('*/manifest.json'))), 1)
+        self.run_install('--restore', str(manifest), '--apply')
+        self.assertEqual(self.git_values('user.name'), ['Original User'])
+        self.assertEqual((self.home / '.config/git').resolve(), old_dir)
+
+    def test_failed_private_git_dependency_copy_rolls_back_directory_migration(self):
+        old_dir = Path(self.tmp.name) / 'old Git directory'
+        old_dir.mkdir()
+        original = '[include]\n path = identity.conf\n'
+        (old_dir / 'config').write_text(original)
+        (old_dir / 'identity.conf').write_text('[user]\n name = Original User\n')
+        (self.home / '.config').mkdir()
+        (self.home / '.config/git').symlink_to(old_dir, target_is_directory=True)
+        operations = installer.plan_install(self.home, 'wsl')
+        def fail_copy(source, destination):
+            Path(destination).write_bytes(b'partial')
+            raise OSError('fixture copy failure')
+        with mock.patch.object(installer.shutil, 'copy2', side_effect=fail_copy), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(OSError, 'fixture copy failure'):
+                installer.apply_plan(self.home, operations)
+        self.assertEqual((self.home / '.config/git').resolve(), old_dir)
+        self.assertEqual((old_dir / 'config').read_text(), original)
+        self.assertEqual(self.git_values('user.name'), ['Original User'])
+        self.assertFalse((self.home / '.bashrc').exists())
+
     def test_missing_original_backup_rejects_restore_before_unlinking(self):
         (self.home / '.bashrc').write_text('original')
         self.run_install('--profile', 'wsl', '--apply')

@@ -16,6 +16,7 @@ import time
 REPO = Path(__file__).resolve().parents[1]
 SHARED = ('bash', 'common', 'nvim', 'tmux', 'gitconfig', 'gh', 'starship')
 MARKER = '# Managed by dotfiles; previous configuration stays local.\n'
+GIT_SAVED_MARKER = '# Saved private Git config paths: '
 
 
 def exists(path):
@@ -183,19 +184,60 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
         # Keep the old file's parent, so relative Git include paths keep working.
         root_text = git_root.read_text() if git_root.is_file() else ''
         xdg_git = home / '.config/git/config'
+        shared_git = (REPO / 'gitconfig/.config/git/config').read_text()
+        saved_git = {'xdg': '.config/git/previous.config', 'root': '.gitconfig.before-dotfiles'}
+        if root_text.startswith(MARKER):
+            metadata = next((line[len(GIT_SAVED_MARKER):] for line in root_text.splitlines()
+                             if line.startswith(GIT_SAVED_MARKER)), None)
+            if metadata is not None:
+                recorded = json.loads(metadata)
+                if not isinstance(recorded, dict) or set(recorded) != set(saved_git):
+                    raise ValueError('Invalid saved Git configuration metadata in ~/.gitconfig')
+                for key, base in saved_git.items():
+                    value = recorded[key]
+                    if not isinstance(value, str) or not (value == base or (
+                            value.startswith(base + '.') and len(value) == len(base) + 65 and
+                            all(char in '0123456789abcdef' for char in value[len(base) + 1:]))):
+                        raise ValueError('Invalid saved Git configuration path in ~/.gitconfig')
+                saved_git = recorded
         previous_files = {}
-        if root_text and not root_text.startswith(MARKER):
-            previous_files[home / '.gitconfig.before-dotfiles'] = root_text
+        if root_text and not root_text.startswith(MARKER) and root_text != shared_git:
+            previous_files['root'] = root_text
         if xdg_git.is_file() and xdg_git.resolve() != (REPO / 'gitconfig/.config/git/config').resolve():
-            previous_files[home / '.config/git/previous.config'] = xdg_git.read_text()
-        for old, previous in previous_files.items():
-            if old.is_file() and old.read_text() != previous:
-                raise ValueError(f'Private Git configuration already preserved at {old}; reconcile before replacing it.')
-            desired[str(old.relative_to(home))] = dict(kind='write', content=previous)
-        loader = MARKER + ('[include]\n\tpath = ~/.config/git/previous.config\n'
-                           '[include]\n\tpath = ~/.gitconfig.before-dotfiles\n'
-                           '[include]\n\tpath = ~/.config/git/config\n'
-                           '[include]\n\tpath = ~/.gitconfig.local\n')
+            content = xdg_git.read_text()
+            # Shared config copied or linked from another checkout is not new
+            # private configuration; leave the saved identity/helpers active.
+            if content != shared_git:
+                previous_files['xdg'] = content
+        for key, previous in previous_files.items():
+            relative = saved_git[key]
+            old = home / relative
+            if exists(old) and (not old.is_file() or old.read_text() != previous):
+                # The current config may include this saved predecessor. Keep
+                # it in place and choose a separate sibling snapshot so relative
+                # includes retain their base and cannot become self-includes.
+                base = '.config/git/previous.config' if key == 'xdg' else '.gitconfig.before-dotfiles'
+                relative = base + '.' + hashlib.sha256(previous.encode()).hexdigest()
+                snapshot = home / relative
+                if exists(snapshot) and (not snapshot.is_file() or snapshot.read_text() != previous):
+                    raise ValueError(f'Conflicting saved Git snapshot: {snapshot}')
+            desired[relative] = dict(kind='write', content=previous)
+            saved_git[key] = relative
+        if virtual_missing('.config/git/previous.config'):
+            # Keep unselected local files when replacing a directory link:
+            # relative includes and credential helpers may depend on them.
+            gitdir = home / '.config/git'
+            for old in sorted(gitdir.rglob('*')):
+                relative = str(old.relative_to(home))
+                if relative in desired:
+                    continue
+                if old.is_symlink() and not old.is_file():
+                    desired[relative] = dict(kind='link', source=str(old.resolve()))
+                elif old.is_file():
+                    desired[relative] = dict(kind='copy', source=str(old.resolve()))
+        loader = MARKER + GIT_SAVED_MARKER + json.dumps(saved_git, sort_keys=True) + '\n'
+        for relative in (saved_git['xdg'], saved_git['root'], '.config/git/config', '.gitconfig.local'):
+            loader += '[include]\n\tpath = ~/' + relative + '\n'
         desired['.gitconfig'] = dict(kind='write', content=loader)
     if profile == 'omarchy':
         for relative, content in desktop_preferences(home).items():
@@ -245,7 +287,7 @@ def safe_relative(value):
 def matches(path, record):
     if record['kind'] == 'link':
         return path.is_symlink() and os.readlink(path) == record['source']
-    if record['kind'] == 'write':
+    if record['kind'] in ('write', 'copy'):
         return path.is_file() and not path.is_symlink() and digest(path) == record['sha256']
     return not exists(path)
 
@@ -365,6 +407,8 @@ def apply_plan(home, operations, desktop=False, projects=True):
             record['had_original'] = exists(path)
             if spec['kind'] == 'write':
                 record['sha256'] = hashlib.sha256(spec['content'].encode()).hexdigest()
+            elif spec['kind'] == 'copy':
+                record['sha256'] = digest(Path(spec['source']))
             data['records'].append(record)
             save()
             if exists(path):
@@ -381,8 +425,13 @@ def apply_plan(home, operations, desktop=False, projects=True):
                     with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f'.{path.name}.dotfiles-', delete=False) as stream:
                         temporary = Path(stream.name)
                     try:
-                        temporary.write_text(spec['content'], encoding='utf-8')
-                        temporary.chmod(0o600)
+                        if spec['kind'] == 'copy':
+                            shutil.copy2(spec['source'], temporary)
+                            record['sha256'] = digest(temporary)
+                            save()
+                        else:
+                            temporary.write_text(spec['content'], encoding='utf-8')
+                            temporary.chmod(0o600)
                         temporary.replace(path)
                     finally:
                         temporary.unlink(missing_ok=True)
