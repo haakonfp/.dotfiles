@@ -683,7 +683,7 @@ aliases:
         Additional context: ${note}"
           fi
 
-          codex --full-auto --search "$prompt"
+          "$HOME/.local/bin/dotfiles-agent" codex --full-auto --search "$prompt"
         }
 
         f "$@"
@@ -850,7 +850,7 @@ aliases:
         Additional context: ${note}"
           fi
 
-          codex --full-auto --search "$prompt"
+          "$HOME/.local/bin/dotfiles-agent" codex --full-auto --search "$prompt"
         }
 
         f "$@"

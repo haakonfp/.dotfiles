@@ -1,3 +1,16 @@
 /gh/.config/gh/hosts.yml
 /tmux/tmux-work2.sh
 .codex
+__pycache__/
+*.pyc
+.superpowers/
+.worktrees/
+# Ignore private overrides while retaining the packaged .local directories.
+?*.local
+.env
+.backups/
+/.bootstrap-cache/
+/.claude*/
+/.codex*/
+/.kube/
+/.ssh/

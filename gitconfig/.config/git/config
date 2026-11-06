@@ -1,0 +1,60 @@
+# See https://git-scm.com/docs/git-config
+
+[alias]
+	co = checkout
+	br = branch --format='%(HEAD) %(color:yellow)%(refname:short)%(color:reset) - %(contents:subject) %(color:green)(%(committerdate:relative)) [%(authorname)]' --sort=-committerdate
+	ci = commit
+	st = status
+	lg = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
+	s = status
+	cm = commit -m
+	d = diff
+	ds = diff --staged
+	dw = diff --word-diff
+	dws = diff --staged --word-diff
+	rs = restore --staged
+	a = add
+	cob = checkout -b
+	del = branch -D
+	save = !git add -A && git commit -m 'chore: savepoint'
+	undo = reset HEAD~1 --mixed
+	res = !git reset --hard
+	done = !git push origin HEAD
+	comm = !git add -A && git commit -m
+	pushup = push --set-upstream origin
+	devbase = "!f(){ git stash && git checkout dev && git pull && git checkout - && git merge dev && git stash pop; };f"
+[init]
+	defaultBranch = main
+[pull]
+	rebase = true 			 # Rebase (instead of merge) on pull
+[push]
+	autoSetupRemote = true   # Automatically set upstream branch on push
+[diff]
+	algorithm = histogram    # Clearer diffs on moved/edited lines
+	colorMoved = false
+	mnemonicPrefix = true    # More intuitive refs in diff output
+[commit]
+	verbose = true           # Include diff comment in commit message template
+[column]
+	ui = auto 			     # Output in columns when possible
+[branch]
+	sort = -committerdate    # Sort branches by most recent commit first
+[tag]
+	sort = -version:refname  # Sort version numbers as you would expect
+[rerere]
+	enabled = true           # Record and reuse conflict resolutions
+	autoupdate = true        # Apply stored conflict resolutions automatically
+[core]
+	editor = nvim
+[color]
+	ui = auto
+[color "diff"]
+	old = "#FF4D6D"
+	new = "#33FF44"
+[color "status"]
+	added = "#33FF44"
+	deleted = "#FF4D6D"
+	changed = "#FF4D6D"
+	untracked = "#FF4D6D"
+
+# The installer's ~/.gitconfig loader reads ~/.gitconfig.local last.

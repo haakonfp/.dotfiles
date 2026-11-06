@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# gh shell aliases run in /bin/sh and cannot inherit interactive Bash functions.
+set -euo pipefail
+case ${1:-} in
+  claude|codex) agent=$1; shift ;;
+  *) printf 'Usage: dotfiles-agent claude|codex [arguments...]\n' >&2; exit 2 ;;
+esac
+source "$HOME/.config/dotfiles/shell/agents.bash"
+"$agent" "$@"
