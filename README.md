@@ -174,6 +174,12 @@ the original locations, preserving relative includes, identities and credential
 helpers. The new loader applies shared defaults and `~/.gitconfig.local`. Existing
 login initialization is preserved too. An old `~/.tmux.conf` is backed up so it
 cannot hide the new `~/.config/tmux/tmux.conf`.
+Copies of the dotfiles login loader, including links from an older checkout,
+keep the saved initializer intact. If your personal login profile has changed,
+its latest version becomes the saved initializer and the older version stays in
+the installation's rollback backup. A custom profile that already sources the
+saved initializer needs its additions moved to the local Bash override first,
+so it cannot become recursive.
 
 ```bash
 ./install --restore /path/to/manifest.json         # preview restore

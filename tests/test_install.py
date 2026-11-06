@@ -74,6 +74,66 @@ class InstallTests(unittest.TestCase):
             result = subprocess.run(['git', 'config', '--global', '--includes', '--get', key], env=env, text=True, capture_output=True)
             self.assertEqual(result.stdout.strip(), expected)
 
+    def test_copied_managed_login_profile_does_not_replace_original_initializer(self):
+        login = self.home / '.bash_profile'
+        prior = self.home / '.bash_profile.before-dotfiles'
+        login.write_bytes((REPO / 'bash/.bash_profile').read_bytes())
+        original = 'export LOGIN_SENTINEL=original\n'
+        prior.write_text(original)
+        self.run_install('--profile', 'omarchy', '--apply')
+        self.assertEqual(prior.read_text(), original)
+        env = dict(os.environ, HOME=str(self.home), DOTFILES_BASHRC_LOADED='1')
+        result = subprocess.run(['bash', '--noprofile', '--norc', '-c',
+                                 'source "$HOME/.bash_profile"; printf "%s" "$LOGIN_SENTINEL"'],
+                                env=env, text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'original')
+
+    def test_changed_personal_login_replaces_saved_initializer_with_transactional_backup(self):
+        login = self.home / '.bash_profile'
+        prior = self.home / '.bash_profile.before-dotfiles'
+        login.write_text('export LOGIN_SENTINEL=newer\n')
+        prior.write_text('export LOGIN_SENTINEL=older\n')
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(prior.read_text(), 'export LOGIN_SENTINEL=newer\n')
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        backup = manifest.parent / 'files/.bash_profile.before-dotfiles'
+        self.assertEqual(backup.read_text(), 'export LOGIN_SENTINEL=older\n')
+        self.run_install('--profile', 'wsl', '--apply')
+        self.assertEqual(len(list((manifest.parent.parent).glob('*/manifest.json'))), 1)
+        self.run_install('--restore', str(manifest), '--apply')
+        self.assertEqual(login.read_text(), 'export LOGIN_SENTINEL=newer\n')
+        self.assertEqual(prior.read_text(), 'export LOGIN_SENTINEL=older\n')
+
+    def test_login_link_from_other_checkout_keeps_saved_initializer(self):
+        old_checkout = Path(self.tmp.name) / 'old dotfiles'
+        old_checkout.mkdir()
+        old_login = old_checkout / '.bash_profile'
+        old_login.write_bytes((REPO / 'bash/.bash_profile').read_bytes())
+        login = self.home / '.bash_profile'
+        login.symlink_to(old_login)
+        prior = self.home / '.bash_profile.before-dotfiles'
+        prior.write_text('export LOGIN_SENTINEL=original\n')
+        self.run_install('--profile', 'omarchy', '--apply')
+        self.assertEqual(login.resolve(), REPO / 'bash/.bash_profile')
+        self.assertEqual(prior.read_text(), 'export LOGIN_SENTINEL=original\n')
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.run_install('--restore', str(manifest), '--apply')
+        self.assertEqual(login.resolve(), old_login)
+
+    def test_custom_login_referencing_saved_initializer_is_not_made_recursive(self):
+        login = self.home / '.bash_profile'
+        prior = self.home / '.bash_profile.before-dotfiles'
+        content = 'source "$HOME/.bash_profile.before-dotfiles"\nexport CUSTOM_LOGIN=yes\n'
+        login.write_text(content)
+        prior.write_text('export LOGIN_SENTINEL=original\n')
+        result = self.run_install('--profile', 'omarchy', '--apply', ok=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('recursive startup', result.stderr)
+        self.assertEqual(login.read_text(), content)
+        self.assertEqual(prior.read_text(), 'export LOGIN_SENTINEL=original\n')
+        self.assertFalse((self.home / '.local/state/dotfiles/backups').exists())
+
     def test_desktop_preferences_preserve_unrelated_and_existing_files(self):
         config = self.home / '.config'
         config.mkdir()

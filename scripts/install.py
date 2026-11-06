@@ -164,12 +164,18 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
                 operations.append(dict(path=str(relative), kind='remove'))
     if not preferences_only:
         login = home / '.bash_profile'
-        prior_login = home / '.bash_profile.before-dotfiles'
         if login.is_file() and login.resolve() != (REPO / 'bash/.bash_profile').resolve():
             content = login.read_text()
-            if prior_login.is_file() and prior_login.read_text() != content:
-                raise ValueError(f'Existing login configuration already saved at {prior_login}')
-            desired['.bash_profile.before-dotfiles'] = dict(kind='write', content=content)
+            # A copy or link from another checkout is still our loader. Saving
+            # it as its own initializer would recurse and hide the original.
+            if content != (REPO / 'bash/.bash_profile').read_text():
+                if '.bash_profile.before-dotfiles' in content:
+                    raise ValueError('Custom login profile references .bash_profile.before-dotfiles; '
+                                     'preserving both files to avoid recursive startup. Move custom '
+                                     'initialization into ~/.config/dotfiles/local.bash before retrying.')
+                # Replacing a genuinely changed initializer participates in
+                # the same backup/restore transaction as the login profile.
+                desired['.bash_profile.before-dotfiles'] = dict(kind='write', content=content)
         legacy_tmux = home / '.tmux.conf'
         if exists(legacy_tmux):
             operations.append(dict(path='.tmux.conf', kind='remove'))
