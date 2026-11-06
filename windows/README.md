@@ -59,9 +59,17 @@ JSON and keeps the original JSONC, including comments, in an adjacent
 backup over the settings file. Repeated application creates no new backup.
 
 Defaults use Agamotto, an underline cursor, JetBrainsMono Nerd Font Mono Medium,
-and 90% opacity when unset. Existing profile size, opacity and other unrelated
-options remain. Existing palette/font overrides are aligned with the shared
-appearance; set local size/opacity in Terminal's profile settings afterward.
+and 90% opacity with acrylic disabled, matching Foot's clear transparency.
+Existing opacity/acrylic overrides (including unfocused appearances and legacy
+`acrylicOpacity`) are aligned too. The selected Agamotto application theme turns
+Mica off so it cannot replace the clear backdrop with a frosted one; other
+application themes remain available. Profile size and unrelated options remain.
+You can change local size/opacity in Terminal afterward; rerunning the merger
+reapplies the shared transparency.
+
+Microsoft documents that [unblurred opacity requires Windows 11](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance#opacity).
+Windows 10 cannot reproduce this exact clear effect. Font rendering, display
+scaling and the Windows desktop behind the terminal can still look different.
 
 Keys follow [Windows Terminal's action schema](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/actions):
 Shift+Alt+1–8 selects tabs, Shift+Alt+9 selects the last tab. Ctrl+Shift+1–8

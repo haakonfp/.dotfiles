@@ -95,10 +95,10 @@ class WindowsTerminalTests(unittest.TestCase):
         self.assertEqual(defaults['font']['weight'], 'medium')
         self.assertEqual(defaults['font']['size'], 14)
         self.assertEqual(defaults['font']['features'], {'calt': 0})
-        self.assertEqual(defaults['opacity'], 77)
+        self.assertEqual(defaults['opacity'], 90)
         self.assertEqual(got['profiles']['list'][0]['font']['size'], 16)
         self.assertEqual(got['profiles']['list'][0]['font']['face'], 'JetBrainsMono Nerd Font Mono')
-        self.assertEqual(got['profiles']['list'][0]['opacity'], 63)
+        self.assertEqual(got['profiles']['list'][0]['opacity'], 90)
         scheme = next(s for s in got['schemes'] if s['name'] == 'Agamotto')
         self.assertEqual((scheme['background'], scheme['purple'], scheme['selectionBackground'], scheme['cursorColor']),
                          ('#0A0118', '#BD93F9', '#5B4B8A', '#FFFFFF'))
@@ -172,11 +172,35 @@ class WindowsTerminalTests(unittest.TestCase):
         profile = got['profiles']['list'][0]
         self.assertEqual(defaults['cursorColor'], '#FFFFFF')
         self.assertEqual(defaults['foreground'], '#F8F8F2')
-        self.assertEqual(defaults['opacity'], 72)
+        self.assertEqual(defaults['opacity'], 90)
         self.assertEqual(profile['selectionBackground'], '#5B4B8A')
         self.assertEqual(profile['background'], '#0A0118')
         self.assertEqual(profile['cursorColor'], '#FFFFFF')
         self.assertEqual(profile['fontSize'],15)
+
+    def test_plain_transparency_overrides_acrylic_and_inactive_profile_settings(self):
+        got = module().merge_settings({'profiles': {
+            'defaults': {'opacity':75, 'useAcrylic':True, 'acrylicOpacity':0.5,
+                         'unfocusedAppearance':{'opacity':60, 'useAcrylic':True}},
+            'list': [{'opacity':100, 'useAcrylic':True, 'acrylicOpacity':0.8,
+                      'unfocusedAppearance':{'opacity':50, 'useAcrylic':True, 'cursorColor':'#AABBCC'}}]}})
+        defaults = got['profiles']['defaults']
+        profile = got['profiles']['list'][0]
+        for appearance in (defaults, profile, defaults['unfocusedAppearance'], profile['unfocusedAppearance']):
+            self.assertEqual(appearance['opacity'], 90)
+            self.assertFalse(appearance['useAcrylic'])
+            self.assertNotIn('acrylicOpacity', appearance)
+        self.assertEqual(profile['unfocusedAppearance']['cursorColor'], '#AABBCC')
+        self.assertEqual(module().merge_settings(got), got)
+
+    def test_selected_application_theme_disables_mica_without_changing_other_themes(self):
+        other = {'name':'Frosted', 'window':{'useMica':True}}
+        got = module().merge_settings({'theme':'Frosted', 'themes':[other]})
+        self.assertEqual(got['themes'][0], other)
+        selected = next(theme for theme in got['themes'] if theme['name'] == got['theme'])
+        self.assertFalse(selected['window']['useMica'])
+        self.assertEqual(selected['window']['applicationTheme'], 'dark')
+        self.assertEqual(module().merge_settings(got), got)
 
     def test_custom_new_tab_menu_preserves_profile_chords_instead_of_guessing(self):
         for menu in [

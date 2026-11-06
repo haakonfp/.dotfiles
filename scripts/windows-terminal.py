@@ -30,6 +30,19 @@ SCHEME = {
 FONT = 'JetBrainsMono Nerd Font Mono'
 
 
+def transparency(profile, defaults=False):
+    legacy = 'acrylicOpacity' in profile
+    profile.pop('acrylicOpacity', None)
+    for key, value in [('opacity', 90), ('useAcrylic', False)]:
+        if defaults or legacy or key in profile:
+            profile[key] = value
+    unfocused = profile.get('unfocusedAppearance')
+    if unfocused is not None:
+        if not isinstance(unfocused, dict):
+            raise ValueError('unfocusedAppearance must be an object or null')
+        transparency(unfocused)
+
+
 def parse_jsonc(source):
     """Strip only lexical comments/trailing commas, never string contents."""
     chars = list(source.lstrip('\ufeff'))
@@ -98,7 +111,7 @@ def normalized_key(key):
 
 
 def appearance(profile, defaults=False):
-    # Change existing appearance overrides too, while preserving size, opacity,
+    # Change existing appearance overrides too, while preserving size,
     # OpenType features, padding and other machine-specific profile properties.
     for key, value in [('colorScheme', 'Agamotto'), ('cursorShape', 'underscore')]:
         if defaults or key in profile:
@@ -114,14 +127,31 @@ def appearance(profile, defaults=False):
         for key, value in [('fontFace', FONT), ('fontWeight', 'medium')]:
             if key in profile:
                 profile[key] = value
-    if defaults:
-        profile.setdefault('opacity', round(profile.get('acrylicOpacity', 0.9) * 100))
+    transparency(profile, defaults)
 
 
 def merge_settings(source):
     if not isinstance(source, dict):
         raise ValueError('Settings must be a JSON object')
     settings = copy.deepcopy(source)
+    # Mica sits underneath terminal panes, so it must be off as well as acrylic
+    # for plain transparency. Select our theme without modifying other themes.
+    themes = settings.setdefault('themes', [])
+    if not isinstance(themes, list) or any(not isinstance(theme, dict) for theme in themes):
+        raise ValueError('themes must be an array of objects')
+    matching_themes = [theme for theme in themes if theme.get('name') == 'Agamotto']
+    if len(matching_themes) > 1:
+        raise ValueError('Duplicate Agamotto application themes; resolve these before merging')
+    if matching_themes:
+        app_theme = matching_themes[0]
+    else:
+        app_theme = {'name': 'Agamotto'}
+        themes.append(app_theme)
+    window = app_theme.setdefault('window', {})
+    if not isinstance(window, dict):
+        raise ValueError('Application theme window must be an object')
+    window.update(applicationTheme='dark', useMica=False)
+    settings['theme'] = 'Agamotto'
     profiles = settings.setdefault('profiles', {})
     if isinstance(profiles, dict):
         listed = profiles.setdefault('list', [])
