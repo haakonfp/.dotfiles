@@ -1,13 +1,4 @@
-#!/usr/bin/env sh
-
-STOW_FOLDERS="zsh,bash,nvim,gitconfig,gh,starship,tmux"
-
-DOT_FILES=$HOME/.dotfiles
-
-pushd $DOT_FILES
-for folder in $(echo $STOW_FOLDERS | sed "s/,/ /g")
-do
-    stow -D $folder
-    stow $folder
-done
-popd
+#!/usr/bin/env bash
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+exec python3 "$repo/scripts/install.py" "$@"

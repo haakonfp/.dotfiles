@@ -1,13 +1,5 @@
-#!/usr/bin/env zsh
-
-STOW_FOLDERS="zsh,bash,nvim,gitconfig,gh,starship"
-
-DOT_FILES=$HOME/.dotfiles
-
-pushd $DOT_FILES
-for folder in $(echo $STOW_FOLDERS | sed "s/,/ /g")
-do
-    echo "Removing $folder"
-    stow -D $folder
-done
-popd
+#!/usr/bin/env bash
+# Remove only links owned by this checkout; --apply is required for changes.
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+exec "$repo/install" --uninstall "$@"
