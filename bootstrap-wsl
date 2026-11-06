@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# Do not allow a later --profile argument to turn this into another platform.
+for arg in "$@"; do
+  [[ $arg != --profile && $arg != --profile=* ]] || { echo 'bootstrap-wsl always uses --profile wsl.' >&2; exit 2; }
+done
+exec "$repo/bootstrap" --profile wsl "$@"
