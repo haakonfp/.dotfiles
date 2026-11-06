@@ -1,0 +1,329 @@
+DOTFILES DESIGN: OMARCHY AND UBUNTU WSL
+Draft for review, 2026-11-06
+
+INTENT
+
+Use the working setup on this Omarchy PC as the reference for a second
+Omarchy PC and three Windows PCs running Ubuntu LTS under WSL. Keep the
+terminal, shell, editor, shortcuts and colors consistent, while allowing
+hardware and Windows profile differences. Preserve the current PC's working
+setup while preparing and testing the repository changes.
+
+DECISIONS FROM THE CONVERSATION
+
+Use this PC's full Neovim and tmux configurations. Use Bash on WSL. Include
+Git aliases, shell aliases, prompt, plugins, Omarchy customizations and the
+current wallpaper. Windows Terminal uses Alt+Shift+numbers to switch tabs
+and Ctrl+Shift+numbers to open profiles; use Ctrl+Shift+C/V/W for copy,
+paste and close pane. Keeping number 9 as last-tab navigation is acceptable.
+The user requested discussion before changing the dotfiles repository.
+Epic-specific setup belongs only on Windows/WSL PCs, where the Windows VPN
+is available. It must never be deployed by the Omarchy profile.
+Use native Docker inside WSL. Do not add VPN diagnostics: the coworker's
+bootstrap does not contain them and the user explicitly excluded them.
+Include this PC's lowercase downloads and automatic screenshot directory
+preferences in the Omarchy setup.
+Include the JetBrainsMono Nerd Font Mono family used by Foot, and make the
+dependency bootstrap install Rust/Cargo, zoxide, eza and the other core
+tools behind the shared environment.
+Set tmux detach-on-destroy on: closing a session's final pane exits its
+client instead of switching that terminal into another open session.
+
+APPROACHES
+
+Recommended approach, developed in the conversation: keep the existing
+Stow-based repository, with one shared configuration and explicit Omarchy
+and WSL profiles. This avoids duplicating editor and tmux configuration
+and preserves a familiar way of managing the files.
+
+Alternative considered: maintain separate complete snapshots for Omarchy
+and WSL. Easier to copy initially, but improvements would need applying
+twice and the machines could diverge. The shared approach is the proposed
+design; no new dotfile manager or configuration framework is needed.
+
+SHARED CONFIGURATION
+
+Replace the active NvChad configuration with this PC's complete LazyVim
+configuration: plugin specifications, current lazy-lock.json, language
+extras, keymaps, options, transparency, picker and Neo-tree changes, Git
+colors and remote clipboard helper. Exclude local backups, caches and
+unused historical editor backups from installation. Preserve the old
+configuration in Git history rather than installing it alongside LazyVim.
+Supply Agamotto as a real portable theme module on WSL; Omarchy keeps its
+generated theme integration and theme switching. No broken symlink to an
+Omarchy state directory on WSL. Default editing behavior, including disabled
+automatic formatting, must match this PC.
+
+Use the current tmux keybindings, appearance and options, plus project and
+numbered-session helper scripts. Keep the current prefix, pane navigation,
+window and session numbering, project picker, clipboard forwarding and
+agent sidebar settings. Account for terminal extended-key support and tool
+versions. Make the help popup useful on both platforms. Install the sidebar
+plugin separately at a recorded revision; do not commit its binary or
+entire checkout. Hook setup must preserve existing agent settings and
+authentication; documentation must distinguish an installed sidebar from
+agent event integration that has not yet been configured.
+
+Share the current Starship prompt, custom Bash aliases (including gst, gp
+and the eza preference), Git aliases and Git behavior/color settings. Keep
+existing gh dev/ctx/solve/follow helpers in the repository by default, with
+the live gh co alias retained. This retention is an assistant proposal,
+not an instruction to execute or redesign these helpers.
+
+On Omarchy, continue sourcing the installed Omarchy Bash defaults and add
+personal configuration on top. On WSL, provide the portable equivalents
+for the everyday aliases, history/completion behavior, zoxide, fzf and
+tmux helpers; avoid referring to nonexistent Omarchy commands. Make
+browser/open and clipboard integration platform-aware. Optional tools must
+not make shell startup fail when missing. Leave developer SDK selection to
+existing project/tool management, rather than installing every language
+runtime automatically. Document the runtimes needed by Mason language tools.
+
+DEPENDENCY BOOTSTRAP AND FONTS
+
+Provide a single documented bootstrap command per platform that installs
+missing core dependencies and then links the selected configurations.
+Keep a configuration-only entry point, and make preview zero-write. All
+package/tool provisioning happens during explicit bootstrap, not shell
+startup. Reuse existing compatible tools and respect project-level
+toolchain selection. Do not add network diagnostics or update watchers.
+
+The core tool set includes git, gh, tmux, Neovim, Starship, zoxide, eza,
+fzf, fd, ripgrep, bat, jq and lazygit, plus curl, CA certificates,
+archive tools and GNU Stow. Supply distribution-specific package mappings
+and expose expected command names (for example fd/fdfind and bat/batcat
+on Ubuntu) so the shared helpers work without shell-specific accidents.
+
+Install stable Rust through rustup, including rustc, Cargo, rustfmt and
+Clippy. Install the native compiler/linker and build dependencies used by
+Cargo packages and Neovim plugins. Initialize Cargo's PATH once and do not
+replace an existing configured Rust toolchain or a project's override.
+
+Capture this PC's mise tool choices: Node 26.8.2, pnpm 12.11.2, and its
+Claude/Codex/GitHub CLI management. Avoid installing a second competing
+copy of a tool already provided by mise; distinguish repository bootstrap
+from the current custom launcher's update-on-launch behavior. Preserve
+the required no-daemon behavior for tmux/sidebar integration with compatible
+clients, without repeatedly injecting the same argument. Bring required
+shell launch helpers along rather than relying on this PC's untracked
+~/.local/bin scripts. Authentication remains local.
+
+Provision Mason language tools for the copied Neovim specs and record the
+working tool versions from installation receipts where useful. Include
+the external runtimes/build dependencies those tools require; detect
+missing runtime dependencies rather than declaring the editor ready merely
+because plugins downloaded. Do not install unrelated language SDKs solely
+because they happen to appear in a package inventory.
+
+The terminal font is JetBrainsMono Nerd Font Mono, Medium, with matching
+regular, bold and italic variants. Install the family for Linux and on the
+Windows host for Windows Terminal; installing fonts in WSL alone does not
+configure the host terminal. Use a versioned official font archive with a
+recorded checksum/license, matched to the current installed font files,
+rather than committing roughly 40 MB of raw fonts. Refresh the Linux font
+cache and provide a per-user Windows font installer. Set the agreed font
+family/weight in each terminal while retaining per-machine font sizes.
+
+OMARCHY PROFILE
+
+Include the Foot configuration, the custom Agamotto colors and shell theme
+overrides, tmux accents, and actual backgrounds/hangar.jpg image (about
+1.9 MB). Use user-owned theme sources; regenerate derived theme files
+through Omarchy rather than tracking its transient state directory.
+
+Include personal Hyprland shortcuts, keyboard layout/preferences and the
+current shell bar/idle configuration. Replace hardcoded /home/hfp/dev
+references with the user's home/project directory. Monitor scale and other
+hardware-dependent settings remain per-machine, with an example carrying
+this PC's settings. Do not overwrite packaged files under
+/usr/share/omarchy, copy stock update hooks, or migrate hardware services.
+
+At installation, create ~/downloads and ~/media/screenshots. Merge the
+corresponding XDG user-directory settings into ~/.config/user-dirs.dirs:
+XDG_DOWNLOAD_DIR="$HOME/downloads" and
+XDG_PICTURES_DIR="$HOME/media/screenshots". Preserve unrelated directory
+preferences and back up the original config. Use a one-time configuration
+step; no startup checks, watchers or services. The installed Omarchy
+screenshot command already reads this file, creates the output directory
+if needed and saves captures there. Preserve the current screenshot
+shortcut and capture flow. Do not patch the packaged screenshot script.
+
+Existing ~/Downloads or ~/Pictures contents must remain intact; report
+them and document any optional move instead of deleting or merging files
+automatically. Browsers with an explicit download-directory override need
+a separate one-time adjustment: this PC's Brave explicitly uses downloads.
+Do not copy browser profiles, history or credentials. Provide a tiny bullet
+checklist for another Omarchy agent to verify these settings and any
+app-specific override. Apply these desktop preferences to Omarchy only;
+do not replace Windows download folders or WSL/Windows known-folder mappings.
+
+Preserve the downloads file-manager bookmark, using the destination user's
+home path. Capture the desktop application launchers/defaults needed by the
+existing shortcuts (Foot, Brave and the default agent), and distinguish
+configured defaults from optional applications that are not installed yet.
+Keep Omarchy's desktop-specific browser routing and preserve unrelated MIME
+handlers. Include current night-light preferences and the already agreed
+keyboard layouts, Compose/Caps behavior, repeat and mouse settings. Existing
+stock system/user services should be handled by the installed Omarchy base;
+do not blindly copy enabled-service symlinks or hardware-specific state.
+
+WSL AND WINDOWS TERMINAL PROFILE
+
+Support the installed Ubuntu LTS release, detected from /etc/os-release;
+do not upgrade the distribution. Check actual tool versions/capabilities
+before installing the configuration. Where distribution packages do not
+support the configuration, provide a documented versioned upstream route
+instead of silently installing an incompatible editor or tmux.
+
+Match the Agamotto terminal palette, cursor and JetBrainsMono Nerd Font
+family, with font size and opacity overridable per Windows PC. Share the
+intended terminal keybindings and pass unshifted application keys through.
+Preserve Alt+Shift+9 as last-tab navigation; avoid changing unused high
+number shortcuts merely for completeness.
+
+Provide a Windows-side settings merger, usable from WSL or PowerShell,
+that finds or explicitly accepts the settings path, previews changes and
+makes a backup before applying. Preserve existing profile GUIDs, launch
+commands, distro selection, ordering and unrelated settings. Support normal
+Windows Terminal JSONC safely, not only strict JSON. Open-profile shortcuts
+follow the machine's actual profile ordering; do not assume three or nine
+profiles or a specific Windows user path. Detect fonts and explain any
+remaining host-side font step. Verify clipboard behavior with tmux and
+Neovim; shell clipboard helpers must use the appropriate available backend.
+Account for inherited Windows Terminal default actions as well as explicit
+saved bindings: in particular, release Alt+Enter from fullscreen so tmux
+can receive it for pane splitting. Explicitly forward distinct Ctrl+number
+and Shift/Alt+Enter sequences where terminal behavior requires it. Keep
+Windows-only host keyboard remapping and display choices in the small
+manual checklist rather than claiming Hyprland settings configure Windows.
+
+EPIC WORK PROFILE: WSL ONLY
+
+Read-only review of the coworker's repository at ~/dev/gh/.dotfiles found
+useful patterns in bootstrap-wsl, bootstrap-ai-configs, epic-ai-setup,
+the shell configuration and Git includes. Adopt the relevant patterns
+within the existing design rather than replacing the user's editor,
+tmux, Bash or installer with the coworker's versions.
+
+Add a WSL-only Epic option (for example, bootstrap-wsl --epic). Before any
+side effects, verify that both WSL and Ubuntu are present. The Omarchy
+profile must reject Epic selection and must not link, install or activate
+Epic gateway commands, enterprise Git configuration, workspace-based
+account routing, corporate-only tools, kubeconfig links or Epic AI homes.
+The regular WSL profile must also leave these absent unless selected.
+
+Use separate personal and Epic Claude/Codex homes, with explicit Epic
+commands and directory-aware routing under a configurable Epic workspace
+(default ~/dev/epic). This is an assistant proposal following the coworker
+pattern. Port the routing to Bash and isolate inherited provider/auth
+environment variables in both directions. Apply routing only with the
+Epic profile enabled. Preserve the normal non-Epic launch behavior on all
+other PCs. Make missing Epic configuration fail with a clear setup hint
+rather than falling back to personal credentials inside the work tree.
+
+Prepare profiles separately from gateway installation and SSO. An explicit
+epic-ai-setup command performs gateway configuration only when the user
+runs it on an opted-in WSL machine. Authentication is local and no tokens
+or caches enter Git. Legacy profile migration must be a separate explicit
+step, with complete preflight and backups; never automatically rename AI
+profiles while installing shared dotfiles or non-Epic WSL configuration.
+Use documented Codex home/state settings and verify the selected client
+version; do not blindly rely on undocumented environment variables.
+
+Within the Epic WSL profile, optionally link the Windows/Twingate-managed
+kubeconfig after discovering the actual Windows user directory. Preserve
+existing Linux kubeconfigs and never replace them silently. Check for
+Windows-specific certificate paths/authentication helper requirements;
+report missing sources without reading credentials into logs. Keep personal
+and corporate kubeconfig selection explicit and configurable, instead of
+exporting the coworker's hardcoded combined KUBECONFIG everywhere.
+
+Use a conditional Git include for the Epic workspace with the user's own
+work identity and enterprise credential/rewrite settings, all supplied
+through local overrides. Do not copy the coworker's identity. These includes
+and host-specific helpers must exist only in the opted-in WSL deployment.
+
+Give WSL an explicit mise tool profile for editor and required developer
+tools, while retaining Omarchy's existing tool management. Check for existing
+Volta/bob/mise installations and preserve or report conflicts before changing
+effective tool selection. Record compatible tool versions rather than blindly
+pinning every SDK to latest. Optional corporate dependencies belong to the
+Epic selection, not every Omarchy machine. Keep tool installation distinct
+from configuration linking and support either step independently.
+
+Native Docker Engine with Compose and Buildx is the chosen WSL bootstrap
+setup. Detect/preserve an existing Docker Desktop integration or Docker
+setup; report a conflict rather than installing a second engine or
+uninstalling an existing setup automatically. Check systemd/service
+startup when configuring a native engine and report the new-session
+requirement after group membership changes. Install through the explicit
+WSL dependency bootstrap, not ordinary dotfile linking or shell startup.
+
+Do not add VPN/network diagnostics, shell startup probes, background
+services or changes to .wslconfig/resolv.conf for VPN use. Leave Windows
+VPN management to the existing host setup. Resolve release-dependent packages (such as
+the ICU dependency) for the detected Ubuntu version instead of copying
+the coworker's fixed libicu78 package name.
+
+INSTALLER AND LOCAL OVERRIDES
+
+Keep a simple entry point with explicit Omarchy and WSL profiles. Preview
+must make no changes. Default operation checks dependencies and reports
+missing ones; a separate explicit bootstrap option can install the needed
+packages/tools. Never perform a distribution upgrade. WSL bootstrap sets
+up the agreed Bash experience without destroying unrelated login settings.
+
+Preflight all intended links/conflicts before applying. Back up files,
+directories and existing links that need replacement, record their original
+paths, and link only the selected packages. Make repeated installation
+safe and report partial failures honestly. Keep backups outside tracked
+packages. Provide a clear rollback/restore procedure; uninstall removes
+only links owned by this checkout. Historical clean-env/install entry
+points must not retain conflicting package lists or destructive behavior.
+
+Provide ignored local overrides for shell additions, Git identity/credential
+settings, tmux tweaks, project root and host/display preferences. Seed an
+existing local identity or document a first-install identity step without
+copying credentials, SSH keys, tokens or shell history. Preserve this PC's
+current Git identity when it is eventually enrolled. Replace literal
+user-specific filesystem paths throughout deployed files.
+
+VALIDATION AND DELIVERY
+
+Implement and test in an isolated checkout and disposable home directories;
+do not enroll or reload this working desktop during repository preparation.
+Test the installer behavior that matters: zero-write preview, conflict
+backup, repeat install, rollback and paths containing spaces. Check shell
+syntax and both startup branches. Check tmux in an isolated server/socket
+and Neovim against the shared config without touching live sessions. Test
+the Windows settings merge against JSONC fixtures containing custom
+profiles and conflicting keybindings, including repeated application.
+Verify the wallpaper matches the source, links resolve and no backups or
+secrets are accidentally included. These tests do not substitute for a
+real Windows/WSL acceptance check; state the remaining platform checks.
+Verify that Omarchy rejects Epic options before changes and that neither
+Omarchy nor ordinary WSL deployment activates Epic paths or account routing.
+Use mocked agents/environment variables to check personal/Epic selection,
+credential override isolation and failure on unconfigured work profiles.
+Do not test migrations against live credentials or run gateway/SSO setup
+as part of repository development.
+
+Update the README with fresh-machine and existing-machine instructions,
+dependency/bootstrap steps, local override examples, keybinding map and
+rollback instructions. Deliver a reviewable repository change first;
+deployment to this or other PCs follows separately. No remote Windows or
+second-Omarchy access has been supplied, so do not claim those machines
+have been configured or tested.
+
+ASSISTANT IMPLEMENTATION CHOICES
+
+The exact package names, supported version checks, small script structure,
+test harness, settings-merger implementation and plugin acquisition method
+are left to the builder. Prefer the least machinery that satisfies the
+behaviors above. Inspect authoritative upstream documentation when choosing
+versions or relying on platform-specific behavior. Do not expand the work
+into application installation, agent authentication or a general system
+provisioning framework.
+The optional WSL Epic gateway preparation and chosen native Docker
+bootstrap described above are the specific exceptions considered in the
+updated design. Interactive SSO remains a later local setup step.
