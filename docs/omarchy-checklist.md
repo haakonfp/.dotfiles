@@ -1,0 +1,11 @@
+- Back up `~/.config/user-dirs.dirs` before changing it; preserve unrelated entries.
+- Create the folders: `mkdir -p "$HOME/downloads" "$HOME/media/screenshots"`.
+- Set downloads: `xdg-user-dirs-update --set DOWNLOAD "$HOME/downloads"`.
+- Set screenshots: `xdg-user-dirs-update --set PICTURES "$HOME/media/screenshots"`. Omarchy reads this setting directly; check for an existing `OMARCHY_SCREENSHOT_DIR` override if captures go elsewhere.
+- Verify with `xdg-user-dir DOWNLOAD` and `xdg-user-dir PICTURES`; take a screenshot using `Super+Shift+S` and confirm the saved location.
+- If Brave or another browser has its own download path, set it to `~/downloads` in its settings. Keep existing `Downloads`/`Pictures` files intact; move them only when requested.
+- Apply these as one-time Omarchy settings. Add no startup services or VPN diagnostics, and keep Epic configuration confined to opted-in WSL setups.
+- Install **JetBrainsMono Nerd Font Mono**, including Medium, regular, bold and italic variants; refresh with `fc-cache` and check the match with `fc-match 'JetBrainsMono Nerd Font Mono:style=Medium'`.
+- Bootstrap installs `foot`, `brave-bin`, and `spotify` through `omarchy pkg add`. With configuration-only installation, install these prerequisites separately; an absent Brave leaves existing browser MIME defaults intact and prints a warning.
+- Confirm the shortcuts launch the intended apps (Foot, Brave, Spotify, default agent), and keep the downloads bookmark pointed at the current user's home.
+- Keep monitor scaling and device-specific settings local; preserve the shared keyboard/Compose and night-light preferences.
