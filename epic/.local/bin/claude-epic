@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$HOME/.config/dotfiles/shell/epic.bash"
+claude-epic "$@"
