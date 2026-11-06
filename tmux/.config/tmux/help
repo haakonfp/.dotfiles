@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+cat <<'HELP'
+Prefix: Ctrl+a
+Alt+Enter / Alt+Shift+Enter  Split horizontally / vertically
+Alt+arrows                  Move between panes
+Alt+1..9                    Select window
+Ctrl+1..9                   Select session by creation order
+Ctrl+Alt+Left/Right          Previous/next window
+Ctrl+Alt+Up/Down             Previous/next session
+Prefix+C                    Project/session picker
+Prefix+S                    Session/window tree
+Prefix+e / Prefix+E          Agent sidebar here / everywhere
+Prefix+q                    Reload config
+Prefix+Space                Copy mode (vi keys; v select, y copy)
+Prefix+x / k / K            Close pane / window / session
+Last pane closes            Exit this tmux client, leave other sessions alone
+HELP

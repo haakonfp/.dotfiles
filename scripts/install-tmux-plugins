@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Install only this plugin. Never run TPM/wizards or alter other plugins/live tmux.
+set -euo pipefail
+revision=d89fe2025cd3f7149b0c8af9d48f15eab5fc2a3a
+url=https://github.com/hiroppy/tmux-agent-sidebar.git
+target="$HOME/.local/share/tmux/plugins/tmux-agent-sidebar"
+case ${1:-} in
+  --dry-run) (($# == 1)) || exit 2; printf 'Would install %s at %s, cargo build --locked --release, without changing agent hooks.\n' "$url" "$revision"; exit 0 ;;
+  '') (($# == 0)) || exit 2 ;;
+  *) echo 'Usage: scripts/install-tmux-plugins [--dry-run]' >&2; exit 2 ;;
+esac
+stage=''
+temporary=false
+trap '! $temporary || rm -rf -- "$stage"' EXIT
+if [[ -e $target || -L $target ]]; then
+  [[ ! -L $target && -d $target/.git ]] || { echo 'Preserving foreign/sidebar symlink; resolve it explicitly.' >&2; exit 1; }
+  [[ $(git -C "$target" remote get-url origin) == "$url" ]] || { echo 'Preserving sidebar checkout from a different origin.' >&2; exit 1; }
+  [[ -z $(git -C "$target" status --porcelain --untracked-files=no) ]] || { echo 'Preserving locally modified sidebar checkout.' >&2; exit 1; }
+  [[ $(git -C "$target" rev-parse HEAD) == "$revision" ]] || {
+    echo 'Preserving sidebar at a different revision; move it aside explicitly before installing the recorded revision.' >&2; exit 1;
+  }
+  if [[ -x $target/bin/tmux-agent-sidebar ]]; then
+    echo 'Pinned tmux sidebar already installed. Agent event hooks require separate setup.'
+    exit 0
+  fi
+  stage=$target
+else
+  mkdir -p -- "${target%/*}"
+  stage=$(mktemp -d "${target%/*}/.sidebar.XXXXXX")
+  temporary=true
+  git -C "$stage" init -q
+  git -C "$stage" remote add origin "$url"
+  git -C "$stage" fetch --depth 1 origin "$revision"
+  git -C "$stage" checkout --detach FETCH_HEAD
+fi
+# Stable is explicit for the build; existing default toolchains/overrides are unchanged.
+CARGO_TARGET_DIR="$stage/target" cargo +stable build --manifest-path "$stage/Cargo.toml" --locked --release
+mkdir -p -- "$stage/bin"
+install -m 755 "$stage/target/release/tmux-agent-sidebar" "$stage/bin/tmux-agent-sidebar"
+if [[ $stage != "$target" ]]; then
+  mv -- "$stage" "$target"
+fi
+stage=''
+temporary=false
+echo 'Pinned tmux sidebar installed. Agent event integration is separate; follow README and preserve existing agent hooks/settings.'

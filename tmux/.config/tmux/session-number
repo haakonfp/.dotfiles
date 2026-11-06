@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ${1:-} =~ ^[1-9]$ ]] || exit 2
+# Number sessions in creation order; show that same order in the session picker.
+session=$(tmux list-sessions -F '#{session_created} #{session_id}' | sort -n | sed -n "${1}s/^[^ ]* //p")
+if [[ -n $session ]]; then
+  tmux switch-client -t "$session"
+else
+  tmux display-message "No session number $1; use prefix + C to open a project"
+fi

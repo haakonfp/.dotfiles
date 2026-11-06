@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+home_root=$(realpath -e -- "$HOME")
+dev_root=${TMUX_PROJECTS_DIR:-"$home_root/dev"}
+cache_root=${XDG_CACHE_HOME:-"$home_root/.cache"}/tmux
+project_cache=$cache_root/projects
+
+if [[ ! -d $dev_root ]]; then
+  printf 'Project directory does not exist: %s\n' "$dev_root" >&2
+  exit 1
+fi
+
+dev_root=$(realpath -e -- "$dev_root")
+
+is_linked_worktree() {
+  local directory=$1
+  local git_directory
+  local common_directory
+
+  git_directory=$(git -C "$directory" rev-parse --absolute-git-dir 2>/dev/null) ||
+    return 1
+  common_directory=$(
+    git -C "$directory" rev-parse --path-format=absolute --git-common-dir 2>/dev/null
+  ) || return 1
+
+  [[ $git_directory != "$common_directory" ]]
+}
+
+is_git_worktree() {
+  local directory=$1
+  local inside_worktree
+
+  inside_worktree=$(
+    git -C "$directory" rev-parse --is-inside-work-tree 2>/dev/null
+  ) || return 1
+
+  [[ $inside_worktree == true ]]
+}
+
+has_hidden_component() {
+  local relative=${1#"$home_root"/}
+
+  # A top-level hidden repository such as ~/.dotfiles is intentional enough to
+  # include. Hidden components below that level usually belong to tooling.
+  [[ $relative == */* && /$relative/ == */.*/* ]]
+}
+
+has_git_parent() {
+  local parent=${1%/*}
+
+  while [[ $parent == "$home_root/"* ]]; do
+    [[ -e $parent/.git ]] && return 0
+    parent=${parent%/*}
+  done
+
+  return 1
+}
+
+is_selectable_repository() {
+  local directory=$1
+
+  [[ $directory == "$home_root" ]] && is_git_worktree "$directory" && return 0
+
+  if has_hidden_component "$directory" || has_git_parent "$directory"; then
+    is_linked_worktree "$directory"
+  else
+    is_git_worktree "$directory"
+  fi
+}
+
+repository_candidates() {
+  if command -v fd >/dev/null 2>&1; then
+    fd \
+      --hidden \
+      --no-ignore \
+      --one-file-system \
+      --absolute-path \
+      --glob .git \
+      "$home_root" |
+      sed 's#/.git/$##; s#/.git$##'
+  else
+    find "$home_root" \
+      -xdev \
+      \( -type d -name .git -printf '%h\n' -prune \) -o \
+      \( -type f -name .git -printf '%h\n' \) \
+      2>/dev/null
+  fi
+}
+
+discover_repositories() {
+  repository_candidates |
+    sort -u |
+    while IFS= read -r directory; do
+      is_selectable_repository "$directory" || continue
+
+      if [[ $directory == "$home_root" ]]; then
+        printf '.\n'
+      else
+        printf '%s\n' "${directory#"$home_root"/}"
+      fi
+    done
+}
+
+refresh_project_cache() {
+  local temporary_cache
+
+  mkdir -p -- "$cache_root"
+  temporary_cache=$(mktemp "$cache_root/projects.XXXXXX")
+
+  if discover_repositories >"$temporary_cache"; then
+    mv -- "$temporary_cache" "$project_cache"
+  else
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
+}
+
+if (($# == 0)); then
+  if [[ -s $project_cache ]]; then
+    refresh_project_cache </dev/null >/dev/null 2>&1 &
+  else
+    refresh_project_cache
+  fi
+
+  project=$(fzf --prompt='tmux project> ' <"$project_cache") || exit 0
+elif (($# == 1)); then
+  project=$1
+else
+  printf 'Usage: t [project]\n' >&2
+  exit 2
+fi
+
+if [[ -z $project || $project == /* ]]; then
+  printf 'Project must be a path relative to %s\n' "$home_root" >&2
+  exit 2
+fi
+
+if [[ -d $dev_root/$project ]]; then
+  candidate=$dev_root/$project
+else
+  candidate=$home_root/$project
+fi
+
+if ! directory=$(realpath -e -- "$candidate"); then
+  printf 'Project does not exist: %s\n' "$candidate" >&2
+  exit 1
+fi
+
+if [[ ! -d $directory ]]; then
+  printf 'Project is not a directory: %s\n' "$directory" >&2
+  exit 1
+fi
+
+if [[ $directory != "$home_root" && $directory != "$home_root/"* ]]; then
+  printf 'Project must be beneath %s\n' "$home_root" >&2
+  exit 1
+fi
+
+if [[ $directory == "$home_root" ]]; then
+  relative=home
+else
+  relative=${directory#"$home_root"/}
+fi
+
+session=$(
+  printf '%s' "$relative" |
+    sed 's#[^[:alnum:]_-]#-#g; s#-\{2,\}#-#g; s#^-##; s#-$##'
+)
+
+if tmux has-session -t "=$session" 2>/dev/null; then
+  existing_path=$(tmux display-message -p -t "=$session:" '#{session_path}')
+
+  if [[ $existing_path != "$directory" ]]; then
+    printf 'Session %s already belongs to %s\n' "$session" "$existing_path" >&2
+    exit 1
+  fi
+elif [[ -n ${TMUX:-} ]]; then
+  tmux new-session -d -s "$session" -c "$directory"
+else
+  exec tmux new-session -s "$session" -c "$directory"
+fi
+
+if [[ -n ${TMUX:-} ]]; then
+  tmux switch-client -t "=$session"
+else
+  exec tmux attach-session -t "=$session"
+fi
