@@ -63,8 +63,9 @@ The separate settings-merger commands above preview the host changes before
 applying them.
 
 You can supply `--settings "/mnt/c/Users/you/.../settings.json"`. The merger
-preserves existing profile GUIDs, launch commands, ordering, unrelated settings,
-font sizes and opacity. It accepts JSONC; application writes formatted JSON,
+preserves existing profile GUIDs, launch commands, ordering, unrelated settings
+and font sizes. It aligns transparency to this PC: 90% opacity, acrylic off,
+and a dark application theme with Mica off. It accepts JSONC; application writes formatted JSON,
 with the original comments/bytes retained in the adjacent backup. Custom
 `newTabMenu` layouts keep their existing profile-number shortcuts and print a
 host-check note. See [Windows details](windows/README.md).
@@ -119,19 +120,24 @@ Bootstrap installs Rust/Cargo with rustfmt/Clippy, compiler/build dependencies,
 Git/gh, Neovim, tmux, zoxide, eza, fzf, fd, ripgrep, bat, jq, lazygit, Starship
 and the font family. Omarchy bootstrap also installs the minimal personal
 shortcut applications `foot`, `brave-bin`, and `spotify` with `omarchy pkg add`.
-It uses rustup and mise without changing existing project
-toolchain overrides. The recorded Node/pnpm baseline is 26.8.2/12.11.2. Existing
-compatible tools are retained; incompatible selections owned by another manager
-get an actionable message rather than being silently replaced.
-An existing `dotnet` command must include an SDK version 8 or newer; a runtime-only
-installation does not satisfy the CSharpier language-tool setup. If a compatibility
-check stops bootstrap, select the requested version/SDK in your existing manager
-and rerun it. Docker Desktop conflicts likewise require an explicit user choice.
+It uses rustup and mise without changing project toolchain overrides.
+The Node/pnpm baseline is 26.8.2/12.11.2. Compatible tools are retained;
+missing or older Node/pnpm versions are installed through mise automatically.
+For .NET, an existing SDK version 8 or newer is retained; missing, obsolete or
+runtime-only installations get the .NET 10 SDK through mise. You do not need
+to install these runtimes or mise manually. Updated runtime defaults go in
+the global mise config, backed up beside it as `config.toml.before-dotfiles.*`;
+unrelated entries and project version pins remain. Bootstrap activates the mise
+environment immediately so Mason sees the SDK from its install directory too.
+Docker Desktop conflicts still require an explicit user choice.
 
 The editor lockfile requires Neovim 0.12 or later. Bootstrap provides upstream
 0.12.6 when necessary and checks tmux's actual extended-key support before using
 the distro version. Language servers/formatters are provisioned through Mason;
 project-specific SDKs and package dependencies still belong to the projects.
+Mason lets all queued installers finish before reporting any failures, with the
+log path printed for diagnosis. Successful installs survive a retry. Desktop
+theme application runs before this step, so a package failure does not prevent it.
 The sidebar checkout is pinned and built through Cargo; no plugin wizard changes
 your live tmux or agent settings during installation.
 
@@ -181,6 +187,19 @@ missing original backups. Unlinking is not a rollback: it leaves user data,
 private overrides and desktop preferences alone. Generated theme state remains
 managed by Omarchy. A theme change during bootstrap is separate from the link
 manifest; after restore, select the previous theme with `omarchy theme set NAME`.
+The Omarchy install also backs up and removes existing glassy/opaque mode flags
+to match this PC's plain transparency. For an already installed checkout, apply
+that mode to the running desktop and open a new Foot window:
+
+```bash
+./install --profile omarchy --apply
+omarchy hyprland window transparency transparent
+```
+
+Foot uses 90% background opacity with blur off. Existing deliberate settings in
+`~/.config/foot/local.ini` still take precedence. Bootstrap applies the mode for
+you on versions with that command; older Omarchy 4 versions still apply the
+theme and Foot settings. Mise runtime-default backups are separate from the installer manifest.
 
 ## Local preferences
 

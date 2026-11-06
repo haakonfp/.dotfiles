@@ -20,10 +20,10 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **79 tests passed**, including a private tmux server
+- Full expanded suite: **91 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
-- Actual installed Omarchy 4.0.6 headless theme generation, Foot configuration
+- Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
   parsing and Hyprland Lua verification in disposable homes, including a
   pre-existing Git-installed theme.
 - Actual interactive Bash startup against installed Omarchy defaults in a
@@ -36,6 +36,19 @@ The second platform review found and fixed gaps not covered by the original
 - Windows JSONC/profile/key merging, Unicode-path transport, font payload handling,
   Epic routing/isolation and bootstrap failure cases use executable temporary
   fixtures. Real Neovim startup-error behavior is tested with headless Neovim.
+- Runtime regressions cover a fresh machine without mise, old Node/pnpm,
+  runtime-only/obsolete .NET, checkout-only SDK selections including an inherited
+  activated PATH, preservation of
+  compatible versions and configuration backups. A separate offline check with
+  actual mise and fixture runtimes verified global selection and activation.
+- A real headless Neovim fixture confirms that a failed Mason install lets
+  another queued installer complete before returning failure with the log path.
+- Omarchy glassy/opaque mode removal is previewed, backed up and restored;
+  WSL leaves it alone. Terminal settings tests cover opacity/acrylic overrides,
+  unfocused appearance and a Mica-free application theme.
+
+Omarchy 4.5's cold-start cursor hook is disabled only in the headless Hyprland
+parsing fixture, where there is no running compositor for that startup effect.
 
 ## Destination checks
 

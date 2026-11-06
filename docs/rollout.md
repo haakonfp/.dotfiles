@@ -45,6 +45,12 @@ local overrides are preserved, including when the old config directories were
 links. If a monitor file is absent, the installed Omarchy default is seeded;
 adjust scale/layout for that PC if needed. `~/downloads` and
 `~/media/screenshots` are configured without moving existing files.
+Bootstrap also selects plain transparent windows and Foot's 90% background
+opacity with blur off, clearing a previous glassy/opaque mode with backups.
+For an existing installed checkout that only needs this correction, run
+`./install --profile omarchy --apply` followed by
+`omarchy hyprland window transparency transparent` on versions offering that
+command, then open a new Foot window. Bootstrap detects command availability.
 
 Verify once:
 
@@ -86,6 +92,8 @@ inside Linux and for your Windows user. Windows directories containing Unicode
 characters or spaces are supported. For a portable/custom Terminal installation,
 pass `--settings '/mnt/c/Users/you/.../settings.json'` to both Python commands.
 Launch Terminal once before discovery so its settings exist.
+The merger applies 90% opacity with acrylic and Mica disabled, including old
+profile transparency overrides. Clear transparency requires Windows 11.
 
 Close/reopen Terminal after host font installation and start a new WSL session
 for Bash/default-shell and Docker group changes. Profile launch commands are
