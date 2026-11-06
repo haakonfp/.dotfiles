@@ -19,7 +19,13 @@ class BootstrapTests(unittest.TestCase):
         self.home.mkdir()
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        self.env = dict(os.environ, HOME=str(self.home), PATH=f'{self.bin}:/usr/bin:/bin', USER='tester')
+        self.env = dict(os.environ, HOME=str(self.home), PATH=f'{self.bin}:/usr/bin:/bin', USER='tester',
+                        XDG_CONFIG_HOME=str(self.home / '.config'),
+                        XDG_DATA_HOME=str(self.home / '.local/share'),
+                        XDG_STATE_HOME=str(self.home / '.local/state'),
+                        XDG_CACHE_HOME=str(self.home / '.cache'))
+        for name in ('MISE_CONFIG_DIR', 'MISE_GLOBAL_CONFIG_FILE'):
+            self.env.pop(name, None)
         for name in ('sudo', 'curl', 'apt-get', 'cargo', 'rustup', 'git', 'mise', 'cmd.exe', 'wslpath'):
             self.fake(name, 'echo "unexpected external operation" >&2; exit 99')
 
@@ -262,12 +268,127 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(git.count('Optional WSL Epic workspace'), 1)
         self.assertFalse((self.home / '.claude-epic').exists())
 
-    def test_incompatible_existing_node_is_reported_without_changing_manager(self):
-        self.fake('node', 'echo v18.20.0')
-        result = self.library('bootstrap_mise')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Node', result.stderr)
-        self.assertNotIn('unexpected external operation', result.stderr)
+    def runtime_fixture(self):
+        # Keep the process boundary offline; the real bootstrap chooses which
+        # tools to install, which config to update, and whether to activate it.
+        (self.bin / 'mise').write_bytes((REPO / 'tests/fixtures/mise-runtime.py').read_bytes())
+        for tool in ('claude', 'codex', 'gh', 'starship', 'zoxide', 'eza', 'lazygit'):
+            self.fake(tool, 'exit 0')
+        self.fake('node', 'echo v26.8.2')
+        self.fake('pnpm', 'echo 12.11.2')
+        self.fake('dotnet', 'echo "8.0.422 [/custom/sdk]"')
+
+    def runtime_calls(self):
+        path = self.home / '.test-mise/calls.jsonl'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_old_node_and_pnpm_are_upgraded_and_available_immediately(self):
+        self.runtime_fixture()
+        self.fake('node', 'echo v24.0.0')
+        self.fake('pnpm', 'echo 11.0.0')
+        config = self.home / '.config/mise/config.toml'
+        config.parent.mkdir(parents=True)
+        original = '[tools]\nnode = "24"\npnpm = "11"\npython = "3.13"\n'
+        config.write_text(original)
+        result = self.library('bootstrap_mise; bootstrap_mise; node --version; pnpm --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('v26.8.2', result.stdout)
+        self.assertIn('12.11.2', result.stdout)
+        self.assertIn('python = "3.13"', config.read_text())
+        backups = list(config.parent.glob('config.toml.before-dotfiles.*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), original)
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+        self.assertIn(['use', '--path', str(config), '--pin', 'node@26.8.2', 'pnpm@12.11.2'], self.runtime_calls())
+        self.assertEqual(sum(call[0] == 'use' for call in self.runtime_calls()), 1)
+
+    def test_compatible_newer_node_is_preserved_when_pnpm_needs_upgrade(self):
+        self.runtime_fixture()
+        self.fake('node', 'echo v28.1.0')
+        self.fake('pnpm', 'echo 11.0.0')
+        result = self.library('bootstrap_mise; node --version; pnpm --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('v28.1.0', result.stdout)
+        self.assertIn('12.11.2', result.stdout)
+        requests = [arg for call in self.runtime_calls() if call[0] == 'use' for arg in call if '@' in arg]
+        self.assertEqual(requests, ['pnpm@12.11.2'])
+
+    def test_fresh_runtime_setup_installs_all_three_without_manual_prerequisites(self):
+        self.runtime_fixture()
+        for tool in ('node', 'pnpm', 'dotnet'):
+            (self.bin / tool).unlink()
+        # Give this process ordinary shell utilities but no distro runtimes.
+        for tool in ('bash', 'sort', 'head', 'mkdir', 'mktemp', 'cp', 'readlink'):
+            (self.bin / tool).symlink_to('/usr/bin/' + tool)
+        self.env['PATH'] = str(self.bin)
+        result = self.library('bootstrap_mise; node --version; pnpm --version; dotnet --list-sdks')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('v26.8.2', result.stdout)
+        self.assertIn('12.11.2', result.stdout)
+        self.assertIn('10.0.100', result.stdout)
+
+    def test_fresh_setup_also_installs_mise_when_missing(self):
+        self.runtime_fixture()
+        binary = self.root / 'mise-binary'
+        (self.bin / 'mise').replace(binary)
+        for tool in ('node', 'pnpm', 'dotnet'):
+            (self.bin / tool).unlink()
+        for tool in ('bash', 'sort', 'head', 'mkdir', 'mktemp', 'cp', 'readlink'):
+            (self.bin / tool).symlink_to('/usr/bin/' + tool)
+        local_bin = self.home / '.local/bin'
+        local_bin.mkdir(parents=True)
+        self.env['PATH'] = str(local_bin) + ':' + str(self.bin)
+        self.env['MISE_BINARY_FIXTURE'] = str(binary)
+        installer = self.root / 'install-mise.sh'
+        installer.write_text('#!/bin/bash\ncp -- "$MISE_BINARY_FIXTURE" "$MISE_INSTALL_PATH"\n')
+        self.env['MISE_INSTALLER_FIXTURE'] = str(installer)
+        self.fake('curl', 'cp -- "$MISE_INSTALLER_FIXTURE" "${@: -1}"')
+        result = self.library('bootstrap_stage=' + shlex.quote(str(self.root)) +
+                              '; bootstrap_mise; node --version; pnpm --version; dotnet --list-sdks')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((local_bin / 'mise').is_file())
+        self.assertIn('v26.8.2', result.stdout)
+        self.assertIn('12.11.2', result.stdout)
+        self.assertIn('10.0.100', result.stdout)
+
+    def test_runtime_install_failure_stops_before_environment_activation(self):
+        self.runtime_fixture()
+        self.fake('node', 'echo v24.0.0')
+        self.env['FAKE_MISE_FAIL'] = '1'
+        result = self.library('bootstrap_mise; echo SHOULD_NOT_CONTINUE')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
+        self.assertFalse(any(call[0] == 'env' for call in self.runtime_calls()))
+
+    def test_checkout_local_sdk_does_not_hide_missing_global_sdk(self):
+        self.runtime_fixture()
+        self.env['CHECKOUT_DIRECTORY'] = os.getcwd()
+        self.fake('dotnet', 'if [[ $PWD == "$CHECKOUT_DIRECTORY" ]]; then echo "10.0.100 [/checkout/sdk]"; fi')
+        result = self.library('bootstrap_mise; cd /; dotnet --list-sdks')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('10.0.100 [/fixture/sdk]', result.stdout)
+
+    def test_inherited_project_sdk_path_gets_a_persistent_global_default(self):
+        self.runtime_fixture()
+        project_bin = self.home / '.local/share/mise/dotnet-root'
+        project_bin.mkdir(parents=True)
+        binary = project_bin / 'dotnet'
+        binary.write_text('#!/bin/bash\necho "10.0.100 [/project/sdk]"\n')
+        binary.chmod(0o755)
+        self.env['PATH'] = str(project_bin) + ':' + self.env['PATH']
+        result = self.library('bootstrap_mise; cd /; dotnet --list-sdks')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('10.0.100 [/fixture/sdk]', result.stdout)
+        config = self.home / '.config/mise/config.toml'
+        self.assertIn('dotnet = "10.0.100"', config.read_text())
+
+    def test_mise_environment_failure_is_not_silently_ignored(self):
+        self.runtime_fixture()
+        self.fake('node', 'echo v24.0.0')
+        self.env['FAKE_MISE_ENV_FAIL'] = '1'
+        result = self.library('bootstrap_mise; echo SHOULD_NOT_CONTINUE')
+        self.assertEqual(result.returncode, 43, result.stdout + result.stderr)
+        self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
 
     def test_editor_asset_failure_is_propagated(self):
         self.fake('nvim', 'echo "plugin installation failed" >&2; exit 31')
@@ -414,6 +535,47 @@ package.preload['mason-registry'] = function() return {refresh=function(cb) cb(t
                     self.assertIn('SUCCESS_SENTINEL', result.stdout)
                     self.assertIn('Mason language tools installed', result.stdout + result.stderr)
 
+    def test_mason_failure_waits_for_other_installs_and_reports_log(self):
+        finished = self.root / 'other-package-installed'
+        self.env['OTHER_PACKAGE_INSTALLED'] = str(finished)
+        preload = self.root / 'preload.lua'
+        preload.write_text('''
+vim.g.lazy_did_setup = true
+package.preload['lazy.core.config'] = function() return {plugins={['mason.nvim']={}}} end
+package.preload['lazy.manage'] = function() return {restore=function() return {wait=function() end} end} end
+package.preload['lazy.core.plugin'] = function() return {values=function()
+  return {ensure_installed={'csharpier', 'yaml-language-server'}}
+end} end
+package.preload['mason-registry'] = function() return {
+  refresh=function(cb) cb(true) end,
+  get_package=function(name)
+    local callbacks = {}
+    return {
+      is_installed=function() return false end,
+      is_installing=function() return false end,
+      once=function(_, event, cb) callbacks[event] = cb end,
+      install=function()
+        if name == 'csharpier' then
+          vim.defer_fn(function() callbacks['install:failed']() end, 10)
+        else
+          vim.defer_fn(function()
+            vim.fn.writefile({'installed'}, vim.env.OTHER_PACKAGE_INSTALLED)
+            callbacks['install:success']()
+          end, 100)
+        end
+      end,
+    }
+  end,
+} end
+''')
+        self.real_editor(str(preload))
+        result = self.editor_run()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(finished.exists(), result.stdout + result.stderr)
+        self.assertIn('csharpier', result.stderr)
+        self.assertIn(str(self.root / 'state/nvim/mason.log'), result.stderr)
+        self.assertNotIn('SUCCESS_SENTINEL', result.stdout)
+
     def test_omarchy_bootstrap_provisions_minimal_shortcut_apps_with_cli(self):
         log = self.root / 'packages'
         self.fake('omarchy', 'printf "%s\\n" "$@" > ' + shlex.quote(str(log)))
@@ -501,20 +663,18 @@ package.preload['mason-registry'] = function() return {refresh=function(cb) cb(t
                     self.assertIn('Neovim >=0.12.0', result.stderr)
                 self.assertEqual(list(self.home.iterdir()), [])
 
-    def test_dotnet_runtime_only_or_obsolete_sdk_refused_before_mise_writes(self):
-        self.fake('node', 'echo v26.8.2')
-        self.fake('pnpm', 'echo 12.11.2')
+    def test_dotnet_runtime_only_or_obsolete_sdk_gets_a_working_sdk(self):
+        self.runtime_fixture()
         for sdks in ('', '6.0.428 [/usr/share/dotnet/sdk]'):
             with self.subTest(sdks=sdks):
                 self.fake('dotnet', 'if [[ $1 == --list-sdks ]]; then echo "' + sdks + '"; else echo 10.0.0; fi')
-                result = self.library('bootstrap_mise')
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn('.NET SDK', result.stderr)
-                self.assertIn('existing manager', result.stderr)
-                self.assertNotIn('unexpected external operation', result.stderr)
-                self.assertEqual(list(self.home.iterdir()), [])
+                result = self.library('bootstrap_mise; dotnet --list-sdks; printf "%s" "$DOTNET_ROOT"')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('10.0.100', result.stdout)
+                self.assertIn('/fixture/sdk', result.stdout)
 
     def test_existing_supported_dotnet_sdk_and_tool_config_are_preserved(self):
+        self.runtime_fixture()
         self.fake('node', 'echo v26.8.2')
         self.fake('pnpm', 'echo 12.11.2')
         self.fake('dotnet', 'if [[ $1 == --list-sdks ]]; then echo "8.0.422 [/custom/dotnet/sdk]"; else echo 8.0.422; fi')

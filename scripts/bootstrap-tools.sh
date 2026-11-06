@@ -126,52 +126,93 @@ bootstrap_rust() {
     [[ $components == *clippy-* ]] || rustup component add --toolchain stable clippy
   fi
 }
+bootstrap_version_at_least() {
+  local current=${1#v} minimum=$2
+  [[ $current =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+    [[ $(printf '%s\n%s\n' "$minimum" "$current" | sort -V | head -1) == "$minimum" ]]
+}
+bootstrap_runtime() {
+  local tool=$1 executable resolved
+  local mise_data="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
+  shift
+  executable=$(command -v "$tool") || return 1
+  resolved=$(readlink -f -- "$executable") || return 1
+  if [[ $resolved == "$mise_data/"* || $executable == "$mise_data/"* ]]; then
+    # An activated parent shell can pass a project-only tool's direct path.
+    # cd alone does not undo activation in a noninteractive bootstrap child.
+    executable=$(mise -C / which "$tool" 2>/dev/null) || return 1
+  fi
+  (cd / && "$executable" "$@")
+}
+bootstrap_dotnet_sdk() {
+  local sdk available_sdks
+  # Mason installs from its staging directory, not from this checkout. A mise
+  # project selection here does not establish a usable default elsewhere.
+  available_sdks=$(bootstrap_runtime dotnet --list-sdks 2>/dev/null) || return 1
+  while read -r sdk _; do
+    if [[ $sdk =~ ^([0-9]+)\. ]] && (( BASH_REMATCH[1] >= 8 )); then return 0; fi
+  done <<< "$available_sdks"
+  return 1
+}
 bootstrap_mise() {
-  local tool spec config="$HOME/.config/mise/conf.d/dotfiles.toml"
-  # Refuse to silently replace another manager's incompatible selection.
-  local current minimum
-  for tool in node pnpm; do
-    if command -v "$tool" >/dev/null; then
-      current=$("$tool" --version)
-      current=${current#v}
-      if [[ $tool == node ]]; then minimum=26.8.2; else minimum=12.11.2; fi
-      if [[ $(printf '%s\n%s\n' "$minimum" "$current" | sort -V | head -1) != "$minimum" ]]; then
-        bootstrap_error "Node/pnpm compatibility: select $tool >= $minimum in your existing manager (found $current), then retry. Existing selection is preserved."; return 1
-      fi
+  local tool spec current minimum backup environment
+  local config_dir="${MISE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mise}"
+  local config="$config_dir/conf.d/dotfiles.toml"
+  local global_config="${MISE_GLOBAL_CONFIG_FILE:-$config_dir/config.toml}"
+  local -a runtimes=() tools=()
+  for spec in node@26.8.2 pnpm@12.11.2; do
+    tool=${spec%@*}; minimum=${spec#*@}
+    current=$(bootstrap_runtime "$tool" --version 2>/dev/null) || current=''
+    if bootstrap_version_at_least "$current" "$minimum"; then
+      printf 'Keeping compatible %s: %s.\n' "$tool" "$current"
+    else
+      printf 'Provisioning %s with mise (missing or older than %s).\n' "$tool" "$minimum"
+      runtimes+=("$spec")
     fi
   done
-  if command -v dotnet >/dev/null; then
-    local sdk available_sdks suitable_sdk=false
-    available_sdks=$(dotnet --list-sdks 2>/dev/null) || {
-      bootstrap_error '.NET SDK discovery failed. Select a working .NET SDK >=8 in your existing manager, then retry; current configuration is preserved.'; return 1;
-    }
-    while read -r sdk _; do
-      if [[ $sdk =~ ^([0-9]+)\. ]] && (( BASH_REMATCH[1] >= 8 )); then suitable_sdk=true; fi
-    done <<< "$available_sdks"
-    if ! $suitable_sdk; then
-      bootstrap_error '.NET SDK >=8 is required for the configured CSharpier Mason tool. A runtime alone is insufficient. Add an SDK in your existing manager (for mise: mise use --path ~/.config/mise/conf.d/dotfiles.toml --pin dotnet@10), then retry; current configuration is preserved.'; return 1
-    fi
-  fi
+  bootstrap_dotnet_sdk || runtimes+=(dotnet@10)
   if ! command -v mise >/dev/null; then
     bootstrap_fetch https://mise.run "$bootstrap_stage/mise.sh"
     MISE_INSTALL_PATH="$HOME/.local/bin/mise" bash "$bootstrap_stage/mise.sh"
   fi
-  mkdir -p -- "${config%/*}"
-  # mise modifies only our dedicated file; existing global/project configuration survives.
-  # Respect tools already on PATH. Install requested Node/pnpm explicitly when absent.
-  local -a tools=()
-  for spec in node@26.8.2 pnpm@12.11.2 claude@latest codex@latest gh@latest dotnet@10 starship@latest zoxide@latest eza@latest lazygit@latest; do
+  # Utilities use our fragment. Missing/old runtimes become actual global
+  # defaults: the main config outranks fragments, and project pins stay intact.
+  for spec in claude@latest codex@latest gh@latest starship@latest zoxide@latest eza@latest lazygit@latest; do
     tool=${spec%@*}
     if ! command -v "$tool" >/dev/null; then
       tools+=("$spec")
-    elif [[ $tool == node || $tool == pnpm ]]; then
-      printf 'Keeping existing %s: %s (project/global selection preserved; requested baseline is %s).\n' "$tool" "$("$tool" --version)" "${spec#*@}"
     fi
   done
-  if ((${#tools[@]})); then
-    mise use --path "$config" --pin "${tools[@]}"
-    mise reshim
+  if ((${#runtimes[@]})); then
+    mkdir -p -- "${global_config%/*}"
+    if [[ -e $global_config || -L $global_config ]]; then
+      backup=$(mktemp "$global_config.before-dotfiles.XXXXXX") || return
+      cp -- "$global_config" "$backup" || return
+      printf 'Mise configuration backup: %s\n' "$backup"
+    fi
+    mise -C / use --path "$global_config" --pin "${runtimes[@]}" || return
   fi
+  if ((${#tools[@]})); then
+    mkdir -p -- "${config%/*}"
+    mise -C / use --path "$config" --pin "${tools[@]}" || return
+  fi
+  if ((${#runtimes[@]} + ${#tools[@]})); then
+    mise reshim || return
+  fi
+  # A noninteractive bootstrap has no prompt hook. Always activate the checked
+  # global environment, including when a parent supplied a project-only PATH.
+  # Neovim children then inherit the SDK and DOTNET_ROOT outside the checkout.
+  environment=$(mise -C / env --shell bash) || return
+  eval "$environment"
+  hash -r
+  for spec in node@26.8.2 pnpm@12.11.2; do
+    tool=${spec%@*}
+    current=$(bootstrap_runtime "$tool" --version 2>/dev/null) || current=''
+    bootstrap_version_at_least "$current" "${spec#*@}" || {
+      bootstrap_error "Mise provisioning did not activate $tool >= ${spec#*@}; inspect your mise overrides before retrying."; return 1;
+    }
+  done
+  bootstrap_dotnet_sdk || { bootstrap_error 'Mise provisioning did not activate a .NET SDK >=8; inspect mise overrides and DOTNET_ROOT before retrying.'; return 1; }
 }
 bootstrap_neovim() {
   # The locked nvim-treesitter revision requires Neovim 0.12.0 or newer.
@@ -269,9 +310,12 @@ registry.refresh(function(success)
   if not ok then table.insert(failures, err) end
   done = true
 end)
-local completed = vim.wait(900000, function() return #failures > 0 or (done and pending == 0) end, 100)
-assert(completed, "Mason setup incomplete (15 minute timeout; inspect :Mason)")
-assert(#failures == 0, "Mason setup incomplete: " .. table.concat(failures, ", "))
+-- Exiting on the first failure aborts every other installer. Let the queued
+-- work settle, then report all failures while preserving successful installs.
+local completed = vim.wait(900000, function() return done and pending == 0 end, 100)
+local log_hint = "; inspect " .. vim.fn.stdpath("log") .. "/mason.log"
+assert(completed, "Mason setup incomplete (15 minute timeout)" .. log_hint)
+assert(#failures == 0, "Mason setup incomplete: " .. table.concat(failures, ", ") .. log_hint)
 print("Mason language tools installed. Verify :checkhealth and project SDK requirements locally.")
 LUA
   DOTFILES_EDITOR_SCRIPT="$bootstrap_stage/mason.lua" nvim --headless "+$protected" +qa || return
@@ -416,10 +460,15 @@ bootstrap_main() {
   [[ $profile != wsl ]] || bootstrap_native_docker
   $epic && install_args+=(--epic)
   "$repo/install" "${install_args[@]}"
-  bootstrap_editor_assets
   if [[ $profile == omarchy ]]; then
     omarchy theme set agamotto
+    # Older Omarchy 4 releases predate the glassy-mode command; the theme
+    # reload and explicit Foot settings still work on those installations.
+    if command -v omarchy-hyprland-window-transparency >/dev/null; then
+      omarchy hyprland window transparency transparent
+    fi
   fi
+  bootstrap_editor_assets
   $epic && bootstrap_epic_local
   [[ -z $windows_settings ]] || python3 "$repo/scripts/windows-terminal.py" --settings "$windows_settings" --apply
   echo 'Tools and configuration installed. Agent authentication, sidebar event hooks, project SDK health and Windows acceptance checks remain local; see README.'
