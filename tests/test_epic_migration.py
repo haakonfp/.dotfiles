@@ -47,6 +47,16 @@ class EpicMigrationTests(unittest.TestCase):
         self.assertFalse(self.destination.exists())
         self.assertFalse((self.home / '.local').exists())
 
+    def test_reconciled_personal_login_is_not_moved_with_stale_gateway_marker(self):
+        self.gateway()
+        settings = self.write('.claude/settings.json', {'forceLoginMethod': 'claudeai'})
+        credentials = self.source / '.credentials.json'
+        credentials.write_bytes(b'personal login')
+        self.assertEqual(self.migrate()['status'], 'not-needed')
+        self.assertTrue(settings.is_file())
+        self.assertEqual(credentials.read_bytes(), b'personal login')
+        self.assertFalse(self.destination.exists())
+
     def test_parsed_gateway_settings_are_recognized_and_preview_has_no_writes(self):
         self.write('.claude/settings.json', {'apiKeyHelper': shlex.quote(str(self.source / 'claude-gateway')) + ' auth'})
         result = self.migrate(apply=False)

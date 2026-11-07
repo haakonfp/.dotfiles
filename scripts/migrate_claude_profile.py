@@ -143,7 +143,12 @@ def migrate_legacy_claude(home: Path, apply=False):
             _safe_path(path, home)
         recognized = marker.is_file()
         if settings.exists():
-            recognized = _gateway_owned(_read_config(settings)[2]) or recognized
+            data = _read_config(settings)[2]
+            # An explicitly reconciled personal profile can retain an inert
+            # legacy helper/cache on disk. Never move its new personal login.
+            if isinstance(data, dict) and data.get('forceLoginMethod') == 'claudeai' and not _gateway_owned(data):
+                return result
+            recognized = _gateway_owned(data) or recognized
         if not recognized:
             return result
         if destination.exists():

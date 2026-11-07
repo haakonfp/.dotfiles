@@ -67,7 +67,11 @@ printf '{}\n' > "$CLAUDE_GATEWAY_USER_CONFIG_FILE"
     def test_partial_target_keeps_live_token_cache_and_repairs_in_place(self):
         legacy = self.home / '.claude'
         legacy.mkdir()
-        original = '{"apiKeyHelper":"claude-gateway token","old":"profile"}'
+        original = json.dumps({'apiKeyHelper': 'claude-gateway token', 'old': 'profile',
+                               'env': {'ANTHROPIC_BASE_URL': 'https://portkey.example.test', 'KEEP': 'yes'},
+                               'hooks': {'SessionStart': [{'hooks': [
+                                   {'type': 'command', 'command': 'claude-gateway pre-auth'},
+                                   {'type': 'command', 'command': 'sidebar-hook'}]}]}})
         (legacy / 'settings.json').write_text(original)
         (legacy / 'gateway-helper-config.json').write_text('{}')
         target = self.home / '.claude-epic'
@@ -76,13 +80,24 @@ printf '{}\n' > "$CLAUDE_GATEWAY_USER_CONFIG_FILE"
         secret.write_bytes(b'private existing gateway cache')
         (target / 'gateway-helper-config.json').write_text('{}')
         (target / '.claude.json').write_text('{"existing":"work state"}')
-        self.gateway()
+        self.fixture.fake('claude-gateway', 'echo "Existing working Claude settings should be reused" >&2; exit 94')
         result = self.run_setup()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(secret.read_bytes(), b'private existing gateway cache')
-        self.assertEqual((legacy / 'settings.json').read_text(), original)
+        personal = json.loads((legacy / 'settings.json').read_text())
+        self.assertNotIn('apiKeyHelper', personal)
+        self.assertEqual(personal['env'], {'KEEP': 'yes'})
+        self.assertEqual(personal['forceLoginMethod'], 'claudeai')
+        self.assertEqual(personal['hooks']['SessionStart'][0]['hooks'],
+                         [{'type': 'command', 'command': 'sidebar-hook'}])
+        backups = list(legacy.glob('settings.json.before-ai-preferences-*'))
+        self.assertTrue(any(path.read_text() == original for path in backups))
         self.assertEqual((target / '.claude.json').read_text(), '{"existing":"work state"}')
         self.assertEqual(json.loads((target / 'settings.json').read_text())['permissions']['defaultMode'], 'acceptEdits')
+        self.assertEqual(json.loads((target / 'settings.json').read_text())['apiKeyHelper'], 'claude-gateway token')
+        repeated = self.run_setup()
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+        self.assertEqual((legacy / 'settings.json').read_text(), json.dumps(personal, ensure_ascii=False, indent=2) + '\n')
         self.assertIn('"epic"', (self.home / '.codex-epic/config.toml').read_text())
 
     def installer(self, fail=False):
@@ -101,6 +116,20 @@ chmod +x "$HOME/.local/bin/claude-gateway"
 '''
         body += ('exit 19\n' if fail else '') + 'INSTALL\n'
         self.fixture.fake('curl', body)
+
+    def test_failed_reconciliation_keeps_working_legacy_settings(self):
+        legacy = self.home / '.claude'
+        legacy.mkdir()
+        original = '{"apiKeyHelper":"claude-gateway token"}'
+        (legacy / 'settings.json').write_text(original)
+        target = self.home / '.claude-epic'
+        (target / 'tokens').mkdir(parents=True)
+        (target / 'tokens/cache.enc').write_bytes(b'unchanged')
+        self.fixture.fake('claude-gateway', 'exit 19')
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 19, result.stdout + result.stderr)
+        self.assertEqual((legacy / 'settings.json').read_text(), original)
+        self.assertEqual((target / 'tokens/cache.enc').read_bytes(), b'unchanged')
 
     def test_installer_is_backed_up_first_and_preserves_complete_codex(self):
         self.installer()

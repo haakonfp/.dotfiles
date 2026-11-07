@@ -28,6 +28,10 @@ The second platform review found and fixed gaps not covered by the original
   ChatGPT selection, private backups, unchanged authentication files, retained
   Epic provider/model and repeat application. The full suite was not repeated
   for this repair.
+- Claude profile reconciliation: **28 focused Epic tests passed**, including
+  recovery into an existing token directory, retention of sidebar hooks, private
+  original settings backups, failed-setup preservation and prevention of later
+  migration of a personal login. No real Epic authentication was run here.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
   parsing and Hyprland Lua verification in disposable homes, including a
   pre-existing Git-installed theme.

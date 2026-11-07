@@ -95,9 +95,29 @@ The recovery journal and original config bytes are private under
 `~/.local/state/dotfiles/ai-migrations/`. Nonempty destinations, ambiguous
 sidecars and linked paths stop migration rather than merging accounts.
 If the Epic directory already contains tokens, logs or other state, setup
-completes that profile in place and retains the old default profile. In
-particular, gateway tokens used by working Codex are not moved. The standalone
-migration preview still reports conflicting profiles for explicit reconciliation.
+completes that profile in place. When the default Claude settings explicitly
+use `claude-gateway`, setup recovers missing Epic settings from that working
+configuration and preserves the existing Epic helper config and token cache.
+Once the work configuration is complete, it backs up the personal settings,
+removes the gateway credential helper, gateway environment/model settings and
+gateway command hooks, and selects personal Claude.ai login. Other hooks and
+preferences remain. Credential caches, sessions and existing source assets are
+not moved or copied; legacy helper/cache files may remain inert on disk.
+In particular, gateway tokens used by working Codex are not moved.
+For this repair, close Claude sessions and run:
+
+```bash
+cd ~/.dotfiles
+git pull --ff-only
+epic-ai-setup
+cd ~
+claude auth login
+```
+
+Then `cd ~/dev/epic` and run `claude` to use Epic. Existing complete Epic
+settings are preserved. If gateway setup fails, the working default settings
+remain. The standalone whole-profile migration preview still reports conflicting
+profiles for explicit reconciliation.
 You can inspect the migration before setup:
 
 ```bash
