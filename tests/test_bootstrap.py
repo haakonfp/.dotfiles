@@ -24,14 +24,18 @@ class BootstrapTests(unittest.TestCase):
         self.home.mkdir()
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        self.env = dict(os.environ, HOME=str(self.home), PATH=f'{self.bin}:/usr/bin:/bin', USER='tester',
+        self.env = dict((key, value) for key, value in os.environ.items()
+                        if not key.startswith(('MISE_', '__MISE_', 'XDG_')))
+        self.env.update(HOME=str(self.home), PATH=f'{self.bin}:/usr/bin:/bin', USER='tester',
                         XDG_CONFIG_HOME=str(self.home / '.config'),
                         XDG_DATA_HOME=str(self.home / '.local/share'),
                         XDG_STATE_HOME=str(self.home / '.local/state'),
                         XDG_CACHE_HOME=str(self.home / '.cache'),
                         MISE_DATA_DIR=str(self.home / '.local/share/mise'),
                         MISE_CACHE_DIR=str(self.home / '.cache/mise'),
-                        MISE_STATE_DIR=str(self.home / '.local/state/mise'))
+                        MISE_STATE_DIR=str(self.home / '.local/state/mise'),
+                        MISE_SYSTEM_CONFIG_DIR=str(self.root / 'system-config'),
+                        MISE_SYSTEM_DATA_DIR=str(self.root / 'system-data'))
         for name in ('MISE_CONFIG_DIR', 'MISE_GLOBAL_CONFIG_FILE'):
             self.env.pop(name, None)
         for name in ('sudo', 'curl', 'apt-get', 'cargo', 'rustup', 'git', 'mise', 'cmd.exe', 'wslpath'):
@@ -548,6 +552,91 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
         self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
         self.assertFalse(any(call[0] == 'env' for call in self.runtime_calls()))
+
+    def test_explicit_refresh_gets_fresh_releases_and_preserves_other_policies(self):
+        self.runtime_fixture()
+        self.env['FAKE_MISE_REQUIRE_FRESH'] = '1'
+        config = self.home / '.config/mise/config.toml'
+        config.parent.mkdir(parents=True)
+        original = ('[tools]\npython = "3.13"\n[settings]\nminimum_release_age = "7d"\n'
+                    'minimum_release_age_excludes = ["python", "claude"]\n')
+        config.write_text(original)
+        for tool in ('claude', 'codex', 'neovim', 'python', 'github'):
+            cached = Path(self.env['MISE_CACHE_DIR']) / tool / 'stale-versions'
+            cached.parent.mkdir(parents=True)
+            cached.write_text('cached release list')
+        project = self.home / 'project'
+        project.mkdir()
+        pinned = project / 'mise.toml'
+        pinned.write_text('[tools]\nclaude = "1.0.0"\nneovim = "0.11.2"\n')
+        result = self.library('cd ' + shlex.quote(str(project)) +
+                              '; bootstrap_mise wsl; bootstrap_neovim wsl; bootstrap_mise wsl; '
+                              'claude --version; codex --version; nvim --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('2.7.4', result.stdout)
+        self.assertIn('0.167.0', result.stdout)
+        self.assertIn('NVIM v0.12.7', result.stdout)
+        selected = tomllib.loads(config.read_text())
+        self.assertEqual(selected['settings']['minimum_release_age'], '7d')
+        self.assertEqual(selected['settings']['minimum_release_age_excludes'], ['python', 'claude', 'codex', 'neovim'])
+        self.assertEqual(selected['tools']['python'], '3.13')
+        self.assertNotIn('use_versions_host', selected['settings'])
+        self.assertEqual(pinned.read_text(), '[tools]\nclaude = "1.0.0"\nneovim = "0.11.2"\n')
+        for tool in ('claude', 'codex', 'neovim', 'python', 'github'):
+            self.assertTrue((Path(self.env['MISE_CACHE_DIR']) / tool / 'stale-versions').exists())
+        self.assertEqual(list(config.parent.glob('config.toml.before-dotfiles.*'))[0].read_text(), original)
+        invocations = [json.loads(line) for line in (self.home / '.test-mise/invocations.jsonl').read_text().splitlines()]
+        for invocation in invocations:
+            if invocation['args'][0] in ('env', 'reshim'):
+                self.assertIsNone(invocation['versions_host'])
+                self.assertEqual(invocation['cache_dir'], self.env['MISE_CACHE_DIR'])
+            elif invocation['args'][0] == 'use':
+                self.assertNotEqual(invocation['cache_dir'], self.env['MISE_CACHE_DIR'])
+                self.assertFalse(Path(invocation['cache_dir']).exists(), 'Temporary resolution cache leaked')
+
+    def test_refresh_honors_custom_global_config_without_touching_default(self):
+        self.runtime_fixture()
+        self.env.update(MISE_CONFIG_DIR=str(self.home / 'custom mise'),
+                        MISE_GLOBAL_CONFIG_FILE=str(self.home / 'custom global.toml'))
+        custom = Path(self.env['MISE_GLOBAL_CONFIG_FILE'])
+        custom.write_text('[settings]\nminimum_release_age_excludes = ["ruby"]\n')
+        result = self.library('bootstrap_mise wsl')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(tomllib.loads(custom.read_text())['settings']['minimum_release_age_excludes'],
+                         ['ruby', 'claude', 'codex', 'neovim'])
+        self.assertFalse((self.home / '.config/mise').exists())
+
+    def test_failed_freshness_policy_stops_before_any_install(self):
+        self.runtime_fixture()
+        self.env['FAKE_MISE_SETTINGS_FAIL'] = '1'
+        result = self.library('bootstrap_mise wsl; echo SHOULD_NOT_CONTINUE')
+        self.assertEqual(result.returncode, 45, result.stdout + result.stderr)
+        self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
+        self.assertFalse(any(call[0] == 'use' for call in self.runtime_calls()))
+
+    def test_failed_latest_install_cleans_temporary_cache_and_preserves_stale_cache(self):
+        self.runtime_fixture()
+        self.env['FAKE_MISE_FAIL'] = '1'
+        cached = Path(self.env['MISE_CACHE_DIR']) / 'github/stale-versions'
+        cached.parent.mkdir(parents=True)
+        cached.write_text('cached release list')
+        result = self.library('bootstrap_mise wsl; echo SHOULD_NOT_CONTINUE')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
+        invocations = [json.loads(line) for line in (self.home / '.test-mise/invocations.jsonl').read_text().splitlines()]
+        installs = [call for call in invocations if call['args'][0] == 'use']
+        self.assertEqual(len(installs), 1)
+        self.assertNotEqual(installs[0]['cache_dir'], self.env['MISE_CACHE_DIR'])
+        self.assertFalse(Path(installs[0]['cache_dir']).exists(), 'Failed install leaked temporary cache')
+        self.assertEqual(cached.read_text(), 'cached release list')
+
+    def test_wsl_rejects_latest_neovim_below_plugin_floor(self):
+        self.runtime_fixture()
+        self.env['FAKE_MISE_NVIM_LATEST'] = '0.11.9'
+        result = self.library('bootstrap_mise wsl; bootstrap_neovim wsl; echo SHOULD_NOT_CONTINUE')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('>=0.12.0', result.stderr)
+        self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
 
     def test_fresh_runtime_setup_installs_all_three_without_manual_prerequisites(self):
         self.runtime_fixture()
@@ -1121,7 +1210,7 @@ shutil.copyfile(os.environ["FIXTURE_NVIM_ARCHIVE"], args[args.index("-o")+1])' "
                               '; bootstrap_mise wsl; bootstrap_neovim wsl; cd /; nvim --version')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         config = self.home / '.config/mise/config.toml'
-        self.assertEqual(tomllib.loads(config.read_text())['tools'].get('neovim'), '0.12.6')
+        self.assertEqual(tomllib.loads(config.read_text())['tools'].get('neovim'), '0.12.7')
         self.assertEqual(project_config.read_text(), '[tools]\nneovim = "0.11.2"\n')
         shim = self.home / '.local/share/mise/shims/nvim'
         target = self.home / '.local/bin/nvim'
@@ -1129,7 +1218,7 @@ shutil.copyfile(os.environ["FIXTURE_NVIM_ARCHIVE"], args[args.index("-o")+1])' "
         self.assertEqual(os.readlink(target), str(shim))
         fresh = self.library('PATH="$HOME/.local/bin:/usr/bin:/bin"; cd /; nvim --version')
         self.assertEqual(fresh.returncode, 0, fresh.stderr)
-        self.assertIn('NVIM v0.12.6', fresh.stdout)
+        self.assertIn('NVIM v0.12.7', fresh.stdout)
         self.assertFalse((self.home / '.local/opt/neovim-0.12.6').exists())
 
     def test_wsl_mise_replaces_only_its_old_portable_neovim_link(self):

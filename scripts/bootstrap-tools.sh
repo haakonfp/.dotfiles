@@ -155,7 +155,7 @@ bootstrap_dotnet_sdk() {
   return 1
 }
 bootstrap_mise() {
-  local profile=${1:-omarchy} tool spec current minimum backup='' environment result
+  local profile=${1:-omarchy} tool spec current minimum backup='' environment result excludes fresh_cache
   local config_dir="${MISE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mise}"
   local config="$config_dir/conf.d/dotfiles.toml"
   local global_config="${MISE_GLOBAL_CONFIG_FILE:-$config_dir/config.toml}"
@@ -171,7 +171,9 @@ bootstrap_mise() {
     fi
   done
   bootstrap_dotnet_sdk || runtimes+=(dotnet@10)
-  [[ $profile != wsl ]] || runtimes+=(neovim@0.12.6)
+  if [[ $profile == wsl ]]; then
+    runtimes+=(neovim@latest)
+  fi
   if ! command -v mise >/dev/null; then
     bootstrap_fetch https://mise.run "$bootstrap_stage/mise.sh"
     MISE_INSTALL_PATH="$HOME/.local/bin/mise" bash "$bootstrap_stage/mise.sh"
@@ -189,13 +191,25 @@ bootstrap_mise() {
     backup=$(mktemp "$global_config.before-dotfiles.XXXXXX") || return
     cp -- "$global_config" "$backup" || return
   fi
-  # An explicit @latest resolves the newest release even when an older client
-  # is already installed. Both accounts share these binaries, not their homes.
-  mise -C / use --path "$global_config" --pin "${runtimes[@]}" claude@latest codex@latest || {
-    result=$?
+  # Keep the existing age policy for every other tool. settings add preserves
+  # existing exclusions, but appends duplicates unless we check first.
+  excludes=$(mise -C / settings get minimum_release_age_excludes) || return
+  for tool in claude codex neovim; do
+    if [[ $excludes != *\""$tool"\"* ]]; then
+      mise -C / settings add minimum_release_age_excludes "$tool" || return
+    fi
+  done
+  # @latest still observes local and shared upstream-metadata caches. A fresh
+  # temporary cache also prevents a network error falling back to stale GitHub
+  # metadata. Keep all existing caches, installed tools and account state.
+  fresh_cache=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-mise-cache.XXXXXX") || return
+  result=0
+  MISE_CACHE_DIR="$fresh_cache" MISE_USE_VERSIONS_HOST=0 mise -C / use --path "$global_config" --pin "${runtimes[@]}" claude@latest codex@latest || result=$?
+  rm -rf -- "$fresh_cache" || return
+  if ((result)); then
     [[ -z $backup ]] || printf 'Mise configuration backup: %s\n' "$backup"
     return "$result"
-  }
+  fi
   if [[ -n $backup ]]; then
     if cmp -s -- "$backup" "$global_config"; then
       rm -- "$backup" || return
