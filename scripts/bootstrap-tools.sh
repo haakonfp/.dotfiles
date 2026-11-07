@@ -269,7 +269,9 @@ bootstrap_editor_assets() {
   # Neovim may exit zero after command/Lua errors followed by +qa. Protect
   # script loading too, and turn every initialization error into a process failure.
   local protected='lua local ok, err = xpcall(function() assert(vim.v.errmsg == "", vim.v.errmsg); dofile(vim.env.DOTFILES_EDITOR_SCRIPT) end, debug.traceback); if not ok then vim.api.nvim_err_writeln(err); vim.cmd("cquit 1") end'
-  cat > "$bootstrap_stage/restore.lua" <<'LUA'
+  # LazyVim can start Mason installs while restoring plugins. Keep that process
+  # alive through the explicit Mason wait; an intermediate +qa aborts its jobs.
+  cat > "$bootstrap_stage/editor.lua" <<'LUA'
 assert(vim.g.lazy_did_setup, "Lazy plugin setup did not initialize")
 local config = require("lazy.core.config")
 assert(type(config.plugins) == "table" and next(config.plugins), "Lazy plugin registry is empty")
@@ -284,10 +286,7 @@ for name, plugin in pairs(config.plugins) do
       (task.output and task:output() or "plugin task error"))
   end
 end
-LUA
-  DOTFILES_EDITOR_SCRIPT="$bootstrap_stage/restore.lua" nvim --headless "+$protected" +qa || return
-  cat > "$bootstrap_stage/mason.lua" <<'LUA'
-assert(vim.g.lazy_did_setup, "Lazy plugin setup did not initialize")
+
 local registry = require("mason-registry")
 local plugin = assert(require("lazy.core.config").plugins["mason.nvim"], "Mason plugin is missing")
 local opts = require("lazy.core.plugin").values(plugin, "opts", false)
@@ -326,7 +325,7 @@ assert(completed, "Mason setup incomplete (15 minute timeout)" .. log_hint)
 assert(#failures == 0, "Mason setup incomplete: " .. table.concat(failures, ", ") .. log_hint)
 print("Mason language tools installed. Verify :checkhealth and project SDK requirements locally.")
 LUA
-  DOTFILES_EDITOR_SCRIPT="$bootstrap_stage/mason.lua" nvim --headless "+$protected" +qa || return
+  DOTFILES_EDITOR_SCRIPT="$bootstrap_stage/editor.lua" nvim --headless "+$protected" +qa || return
 }
 bootstrap_native_docker() {
   local user current_shell

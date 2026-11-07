@@ -769,6 +769,56 @@ package.preload['mason-registry'] = function() return {refresh=function(cb) cb(t
                     self.assertIn('SUCCESS_SENTINEL', result.stdout)
                     self.assertIn('Mason language tools installed', result.stdout + result.stderr)
 
+    def test_editor_restore_does_not_exit_with_mason_install_in_flight(self):
+        aborted = self.root / 'package-aborted'
+        finished = self.root / 'package-installed'
+        starts = self.root / 'package-starts'
+        self.env.update(PACKAGE_ABORTED=str(aborted), PACKAGE_INSTALLED=str(finished),
+                        PACKAGE_STARTS=str(starts))
+        preload = self.root / 'preload.lua'
+        preload.write_text('''
+vim.g.lazy_did_setup = true
+local installing, installed = false, false
+local callbacks = {}
+local function start()
+  assert(not installing, 'Installer was started twice')
+  installing = true
+  vim.fn.writefile({'started'}, vim.env.PACKAGE_STARTS, 'a')
+  vim.defer_fn(function()
+    installing, installed = false, true
+    vim.fn.writefile({'installed'}, vim.env.PACKAGE_INSTALLED)
+    if callbacks['install:success'] then callbacks['install:success']() end
+  end, 200)
+end
+vim.api.nvim_create_autocmd('VimLeavePre', {callback=function()
+  if installing then vim.fn.writefile({'aborted'}, vim.env.PACKAGE_ABORTED) end
+end})
+package.preload['lazy.core.config'] = function() return {plugins={['mason.nvim']={}}} end
+package.preload['lazy.manage'] = function() return {restore=function()
+  -- LazyVim's Mason configuration starts installs during plugin restoration.
+  return {wait=function() start() end}
+end} end
+package.preload['lazy.core.plugin'] = function() return {values=function()
+  return {ensure_installed={'fixture'}}
+end} end
+package.preload['mason-registry'] = function() return {
+  refresh=function(cb) cb(true) end,
+  get_package=function() return {
+    is_installed=function() return installed end,
+    is_installing=function() return installing end,
+    once=function(_, event, cb) callbacks[event] = cb end,
+    install=start,
+  } end,
+} end
+''')
+        self.real_editor(str(preload))
+        result = self.editor_run()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(aborted.exists(), 'Neovim quit during an active Mason install')
+        self.assertTrue(finished.exists(), result.stdout + result.stderr)
+        self.assertEqual(starts.read_text().splitlines(), ['started'])
+        self.assertIn('SUCCESS_SENTINEL', result.stdout)
+
     def test_mason_failure_waits_for_other_installs_and_reports_log(self):
         finished = self.root / 'other-package-installed'
         self.env['OTHER_PACKAGE_INSTALLED'] = str(finished)
