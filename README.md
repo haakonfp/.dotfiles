@@ -13,7 +13,7 @@ git clone --branch main git@github.com:haakonfp/.dotfiles.git ~/.dotfiles
 cd ~/.dotfiles
 ```
 
-Use Bash and Python 3 to run the installer as your normal user. The permanent
+Use Bash and Python 3.11 or newer to run the installer as your normal user. The permanent
 checkout should be `~/.dotfiles`: installed configuration files link to it.
 Preview performs no writes, package operations, downloads or sign-ins.
 
@@ -57,7 +57,7 @@ The Omarchy profile requires an installed Omarchy 4 system with Lua Hyprland
 configuration. It uses the installed Omarchy defaults and adds personal
 overrides. It does not install Epic tools or configure Epic accounts.
 
-### Ubuntu LTS inside WSL2
+### Ubuntu LTS (24.04 or newer) inside WSL2
 
 ```bash
 cd ~/.dotfiles
@@ -108,9 +108,12 @@ Linux kubeconfigs remain intact. Then open a new Bash session and run:
 epic-ai-setup
 ```
 
-`epic-ai-setup` is the separate interactive gateway/SSO step; it never renames
-or combines existing accounts. Partial
-existing profiles stop setup so they can be inspected.
+`epic-ai-setup` is the separate interactive gateway/SSO step. When an older
+gateway-managed Claude profile is still in `~/.claude`, it moves that profile
+and its sidecar into an empty `~/.claude-epic`, with private backups and a recovery
+journal. It preserves ordinary personal profiles and stops on account conflicts.
+Valid partial work configs are backed up before repair; success requires the
+expected files to exist. Already-configured clients do not repeat sign-in.
 
 Within `~/dev/epic`, `claude` and `codex` (including the retained `gh solve`
 and `gh follow` workflows through the shared `dotfiles-agent` dispatcher) select isolated `~/.claude-epic` and
@@ -149,6 +152,10 @@ shortcut applications `foot`, `brave-bin`, and `spotify` with `omarchy pkg add`.
 It uses rustup and mise without changing project toolchain overrides.
 Each explicit bootstrap installs or updates `claude@latest` and `codex@latest`
 through mise, shared by the personal and Epic profiles with separate login homes.
+Claude, Codex and Neovim are excluded from mise's release-age delay. Explicit
+bootstrap uses fresh metadata directly from upstream, so a cached version list
+cannot silently select an old release. Other tools retain their age policy.
+See [mise release policy](docs/mise.md).
 The Epic gateway is installed/configured only by the explicit `epic-ai-setup` step.
 The Node/pnpm baseline is 26.8.2/12.11.2. Compatible tools are retained;
 missing or older Node/pnpm versions are installed through mise automatically.
@@ -161,7 +168,7 @@ environment immediately so Mason sees the SDK from its install directory too.
 Docker Desktop conflicts still require an explicit user choice.
 
 The editor lockfile requires Neovim 0.12 or later. WSL bootstrap installs and
-globally selects `neovim@0.12.6` through mise, with a persistent `nvim` shim link
+globally selects `neovim@latest` through mise, with a persistent `nvim` shim link
 in `~/.local/bin`. It replaces this bootstrap's old portable Neovim link while
 retaining the downloaded binary and Bob's files/selection. An unrecognized
 `~/.local/bin/nvim` is preserved for manual reconciliation. Project mise pins
@@ -184,6 +191,13 @@ After provisioning, complete local agent login and the sidebar's event hooks
 using [the sidebar setup notes](docs/agent-sidebar.md). These account-specific
 steps preserve existing settings and authentication. They are not copied from
 another computer.
+
+The configuration installer merges the reference Codex statusline and
+`workspace-write`/`on-request` defaults into personal profiles, and into configured
+Epic profiles only with `--epic`. Claude starts in `acceptEdits` mode with a
+matching model/folder/branch/context statusline. Other permissions, providers,
+hooks, models and account data are retained. Changed TOML is reformatted;
+the installer's backup contains the original bytes. See [agent preferences](docs/agent-preferences.md).
 
 ## Configuration-only installation and restore
 

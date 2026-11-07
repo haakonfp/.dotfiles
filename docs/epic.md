@@ -20,14 +20,17 @@ bootstrap. A Windows Terminal profile with an explicit Zsh launch command will
 continue to launch Zsh until that profile command is changed.
 
 Each explicit bootstrap installs or updates `claude@latest` and `codex@latest`
-through mise and records their resolved versions in the global mise config.
+and WSL `neovim@latest` through mise, with release-age exclusions and a fresh
+upstream metadata cache. It records resolved versions in the global mise config.
 Existing standalone clients remain on disk; the activated mise versions become
 the defaults. Changed global config is backed up beside it as
 `config.toml.before-dotfiles.*`. Compatible Node/pnpm/.NET versions, unrelated
 tool settings and project pins are preserved. Shell startup does not check for
 new client releases. See [mise's explicit latest selection](https://mise.jdx.dev/cli/use.html).
 
-Sign into your personal accounts outside the work directory:
+When upgrading an old Epic setup, run `epic-ai-setup` before signing into personal
+Claude: its legacy default profile may still be gateway-managed. After setup,
+sign into your personal accounts outside the work directory:
 
 ```bash
 cd ~
@@ -35,10 +38,10 @@ claude auth login
 codex login
 ```
 
-The personal homes are `~/.claude` and `~/.codex`. Each is created privately on
-that client's first invocation if absent. Existing personal account files stay
-in place. This setup does not migrate legacy named profiles or copy a default
-Claude sidecar into a selected home; an existing account may need a fresh login.
+The personal homes are `~/.claude` and `~/.codex`. The configuration installer
+creates private settings with shared UI/edit defaults; account login remains
+local. Ordinary personal account files stay in place. Legacy named profiles are
+not automatically combined; an existing account may need a fresh login.
 
 Then explicitly prepare both work clients:
 
@@ -53,10 +56,33 @@ codex
 Epic `claude-gateway` if missing, and runs `claude-gateway run` for Claude plus
 `claude-gateway codex setup` for Codex when their configuration is absent. This
 is the interactive Epic gateway/SSO step for both clients. A complete existing
-work profile is preserved; partial profiles stop setup for manual inspection.
+work profile does not repeat authentication. Existing config files are backed
+up before running the installer or repairing valid partial profiles, and
+complete client configs are restored if those commands rewrite them. Setup
+verifies the expected files before reporting success; invalid configs stop it.
 Neither ordinary bootstrap nor shell startup performs this sign-in. Bootstrap
 activates mise, and the setup helper includes mise's installed shims on PATH;
 no separate `mise env` command is required in a fresh configured Bash session.
+
+If Claude previously opened the Epic account outside `~/dev/epic`, the old
+default `~/.claude` may still be the work profile. Setup recognizes a gateway
+helper config file or an `apiKeyHelper` whose executable is `claude-gateway`.
+It moves that directory intact into an absent or truly empty `~/.claude-epic`
+and moves its default `~/.claude.json` sidecar there when unambiguous. Only known
+JSON config path references are rewritten; credentials and sessions move intact.
+The recovery journal and original config bytes are private under
+`~/.local/state/dotfiles/ai-migrations/`. Nonempty destinations, ambiguous
+sidecars and linked paths stop migration rather than merging accounts.
+You can inspect the migration before setup:
+
+```bash
+cd ~/.dotfiles
+python3 scripts/migrate_claude_profile.py
+```
+
+The installer applies shared statuslines and edit-approval defaults to personal
+profiles and already-configured opted-in work profiles. Setup applies them to
+newly configured work profiles too. See [agent preferences](agent-preferences.md).
 
 ## Account selection
 

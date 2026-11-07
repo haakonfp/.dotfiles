@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **148 tests passed**, including a private tmux server
+- Full expanded suite: **195 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -99,6 +99,20 @@ Omarchy 4.5's cold-start cursor hook is disabled only in the headless Hyprland
 parsing fixture, where there is no running compositor for that startup effect.
 
 ## Destination checks
+
+Agent preferences are tested for JSON/TOML value preservation, repeat/no-op,
+private backups and transaction restore. Claude statusline tests execute with
+real temporary Git repositories and optional/malformed session metadata.
+Legacy Epic Claude migration tests cover explicit gateway recognition, profile
+conflicts, private sidecar handling, path rewriting and late-failure rollback.
+Setup regressions verify missing-file failures, valid partial repair, snapshots
+before installer writes, and retaining complete Codex configs when installation
+fails. No corporate SSO or real gateway installation was run here.
+
+Mise release policy and override commands were checked with actual mise
+2026.11.2 and 2026.8.12 in isolated homes. Fixtures enforce fresh metadata and
+cache cleanup on failed upstream resolution. This PC's global age exclusions now
+include Claude, Codex and Neovim; its selected tool versions were not changed.
 
 There is no Windows host or second Omarchy PC connected to this session. Actual
 Windows font registration/rendering, terminal key forwarding and host clipboard;
