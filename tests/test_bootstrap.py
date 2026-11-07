@@ -745,6 +745,7 @@ class BootstrapTests(unittest.TestCase):
         self.env['FIXTURE_STAGE'] = str(stage)
         fake_repo = self.root / 'repo'
         (fake_repo / 'scripts').mkdir(parents=True)
+        (fake_repo / 'scripts/sidebar_hooks.py').write_text('')
         for path in ('scripts/install-tmux-plugins', 'scripts/install-fonts.sh', 'install'):
             script = fake_repo / path
             script.write_text('#!/bin/bash\nexit 0\n')

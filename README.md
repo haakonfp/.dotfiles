@@ -193,13 +193,12 @@ queued installers finish before reporting any failures, with the log path
 printed for diagnosis. Successful
 installs survive a retry. Desktop
 theme application runs before this step, so a package failure does not prevent it.
-The sidebar checkout is pinned and built through Cargo; no plugin wizard changes
-your live tmux or agent settings during installation.
-
-After provisioning, complete local agent login and the sidebar's event hooks
-using [the sidebar setup notes](docs/agent-sidebar.md). These account-specific
-steps preserve existing settings and authentication. They are not copied from
-another computer.
+The sidebar checkout is pinned and built through Cargo. Bootstrap automatically
+merges its event hooks for personal Claude and Codex on both platforms, and for
+configured Epic accounts with WSL `--epic`. `epic-ai-setup` adds work hooks after
+first-time gateway setup. Other hooks and account settings are preserved, with
+private backups. Restart running agents afterward; Codex may ask for one-time
+`/hooks` trust. Login remains local. See [sidebar setup and hook-only commands](docs/agent-sidebar.md).
 
 The configuration installer merges the reference Codex statusline and
 `workspace-write`/`on-request` defaults into personal profiles, and into configured

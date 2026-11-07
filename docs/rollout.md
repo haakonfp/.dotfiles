@@ -145,7 +145,8 @@ That separate step can request Epic SSO. Fill in your own work identity in
 retained `gh solve/follow` helpers use isolated work profiles; elsewhere they
 use personal profiles. Use `EPIC_WORKSPACE` for another work root and rerun the
 explicit Epic bootstrap. Existing kubeconfigs and credentials are preserved.
-Complete [sidebar event-hook setup](agent-sidebar.md) for each account you use.
+Bootstrap and Epic setup install [sidebar event hooks](agent-sidebar.md) for the
+selected accounts. Restart running agents; review Codex `/hooks` if prompted.
 The [Epic guide](epic.md) explains personal sign-in, separate work homes, how
 the shared gateway configures both clients, and Git identity versus SSH access.
 

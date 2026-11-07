@@ -128,6 +128,9 @@ python3 scripts/migrate_claude_profile.py
 The installer applies shared statuslines and edit-approval defaults to personal
 profiles and already-configured opted-in work profiles. Setup applies them to
 newly configured work profiles too. See [agent preferences](agent-preferences.md).
+With the sidebar installed, setup also merges its event hooks into all four
+personal/work profiles. Restart running clients afterward; fresh Codex profiles
+may require a one-time `/hooks` trust review. See [sidebar setup](agent-sidebar.md).
 
 ## Account selection
 

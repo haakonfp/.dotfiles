@@ -32,6 +32,12 @@ The second platform review found and fixed gaps not covered by the original
   recovery into an existing token directory, retention of sidebar hooks, private
   original settings backups, failed-setup preservation and prevention of later
   migration of a personal login. No real Epic authentication was run here.
+- Automatic sidebar hooks: **38 focused checks passed** for the merger,
+  two/four-profile selection, backup/retry behavior, inline duplicate avoidance,
+  preservation of account settings and hook trust state, Epic setup integration
+  and bootstrap preview/failure handling. A read-only preview against this PC's
+  actual sidebar generator left both existing hook files unchanged. Shell syntax
+  checks passed; the whole suite was not repeated for this addition.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
   parsing and Hyprland Lua verification in disposable homes, including a
   pre-existing Git-installed theme.
@@ -128,8 +134,8 @@ include Claude, Codex and Neovim; its selected tool versions were not changed.
 There is no Windows host or second Omarchy PC connected to this session. Actual
 Windows font registration/rendering, terminal key forwarding and host clipboard;
 Ubuntu package downloads/builds, Docker service/group access; physical keyboard
-behavior, monitor scale, live wallpaper/bar appearance; Epic SSO and sidebar event
-hooks still need a first run on each destination. Tests do not establish those
+behavior, monitor scale, live wallpaper/bar appearance; Epic SSO and validation
+of live sidebar events still need a first run on each destination. Tests do not establish those
 host-specific results. The [rollout guide](rollout.md) gives the commands and
 short acceptance checklist.
 

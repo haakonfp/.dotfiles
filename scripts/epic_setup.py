@@ -14,6 +14,7 @@ import uuid
 
 from ai_preferences import apply_preferences, merge_claude_settings, merge_personal_codex_config, preference_files, validate_config_path
 from migrate_claude_profile import _gateway_owned, migrate_legacy_claude
+from sidebar_hooks import hook_files
 
 
 def legacy_claude_settings(home):
@@ -202,6 +203,9 @@ def setup(home):
             preferences[personal] = updated
             converted_personal = True
     apply_preferences(preferences)
+    if (home / '.local/share/tmux/plugins/tmux-agent-sidebar/bin/tmux-agent-sidebar').is_file():
+        apply_preferences(hook_files(home, epic=True))
+        print('Sidebar hooks configured for personal and Epic agents. Restart running agents; Codex may request /hooks trust.')
     if personal_settings is not None:
         print('Claude profiles separated. Outside ~/dev/epic run: claude auth login')
     if converted_personal:

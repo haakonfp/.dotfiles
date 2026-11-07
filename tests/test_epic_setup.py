@@ -169,6 +169,28 @@ chmod +x "$HOME/.local/bin/claude-gateway"
         self.assertEqual(tomllib.loads((self.home / '.codex-epic/config.toml').read_text())['model_provider'], 'epic')
         self.assertIn('codex login', result.stdout)
 
+    def test_ready_work_profiles_receive_sidebar_hooks_for_all_four_agents(self):
+        target = self.home / '.claude-epic'
+        target.mkdir()
+        (target / 'settings.json').write_text('{"apiKeyHelper":"claude-gateway token"}')
+        (target / 'gateway-helper-config.json').write_text('{}')
+        plugin = self.home / '.local/share/tmux/plugins/tmux-agent-sidebar'
+        (plugin / 'bin').mkdir(parents=True)
+        (plugin / 'hook.sh').write_text('#!/bin/bash\n')
+        data = {'hook_script': str(plugin / 'hook.sh'), 'agents': {
+            agent: {'snippet': {'hooks': {'Stop': [{'hooks': [{'type': 'command',
+                'command': f'sidebar-{agent}-stop'}]}]}}} for agent in ('claude', 'codex')}}
+        binary = plugin / 'bin/tmux-agent-sidebar'
+        binary.write_text('#!/usr/bin/python3\nprint(' + repr(json.dumps(data)) + ')\n')
+        binary.chmod(0o755)
+        self.fixture.fake('claude-gateway', 'exit 99')
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for relative in ('.claude/settings.json', '.claude-epic/settings.json',
+                         '.codex/hooks.json', '.codex-epic/hooks.json'):
+            self.assertIn('Stop', json.loads((self.home / relative).read_text())['hooks'])
+        self.assertEqual(json.loads((target / 'settings.json').read_text())['apiKeyHelper'], 'claude-gateway token')
+
 
 if __name__ == '__main__':
     unittest.main()

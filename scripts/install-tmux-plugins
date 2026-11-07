@@ -20,7 +20,7 @@ if [[ -e $target || -L $target ]]; then
     echo 'Preserving sidebar at a different revision; move it aside explicitly before installing the recorded revision.' >&2; exit 1;
   }
   if [[ -x $target/bin/tmux-agent-sidebar ]]; then
-    echo 'Pinned tmux sidebar already installed. Agent event hooks require separate setup.'
+    echo 'Pinned tmux sidebar already installed. Bootstrap configures agent event hooks next.'
     exit 0
   fi
   stage=$target
@@ -42,4 +42,4 @@ if [[ $stage != "$target" ]]; then
 fi
 stage=''
 temporary=false
-echo 'Pinned tmux sidebar installed. Agent event integration is separate; follow README and preserve existing agent hooks/settings.'
+echo 'Pinned tmux sidebar installed. Bootstrap configures agent event hooks next; see docs/agent-sidebar.md for standalone setup.'

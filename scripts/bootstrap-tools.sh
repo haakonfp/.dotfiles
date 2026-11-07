@@ -480,9 +480,9 @@ bootstrap_main() {
     bootstrap_error 'Windows options require Ubuntu WSL.'; return 1
   fi
   if $dry_run; then
-    printf 'Would provision %s: core tools, Rust stable/Cargo/rustfmt/Clippy, mise Node 26.8.2/pnpm 12.11.2, install/update latest Claude/Codex (including existing clients), font family, pinned tmux sidebar; then install --apply.\n' "$profile"
+    printf 'Would provision %s: core tools, Rust stable/Cargo/rustfmt/Clippy, mise Node 26.8.2/pnpm 12.11.2, install/update latest Claude/Codex (including existing clients), font family, pinned tmux sidebar and agent hooks; then install --apply.\n' "$profile"
     [[ $profile != wsl ]] || echo 'Would resolve latest stable Neovim globally through mise without a release-age delay; preflight native Docker ownership, install Ubuntu Docker Engine/Compose/Buildx, configure service/group access and select Bash.'
-    $epic && echo 'Would add optional Epic shell links, conditional local Git include and non-destructive Windows kubeconfig link; no AI homes or SSO.'
+    $epic && echo 'Would add optional Epic shell links, conditional local Git include and non-destructive Windows kubeconfig link; hooks for configured work accounts, no new work login or SSO.'
     $windows_fonts && echo 'Would install Windows host fonts.'
     [[ -z $windows_settings ]] || printf 'Would merge Windows Terminal settings at %s.\n' "$windows_settings"
     return 0
@@ -512,6 +512,9 @@ bootstrap_main() {
   [[ $profile != wsl ]] || bootstrap_native_docker
   $epic && install_args+=(--epic)
   "$repo/install" "${install_args[@]}"
+  local -a sidebar_args=(--profile "$profile" --apply)
+  $epic && sidebar_args+=(--epic)
+  python3 "$repo/scripts/sidebar_hooks.py" "${sidebar_args[@]}"
   if [[ $profile == omarchy ]]; then
     omarchy theme set agamotto
     # Older Omarchy 4 releases predate the glassy-mode command; the theme
@@ -523,7 +526,7 @@ bootstrap_main() {
   bootstrap_editor_assets
   $epic && bootstrap_epic_local
   [[ -z $windows_settings ]] || python3 "$repo/scripts/windows-terminal.py" --settings "$windows_settings" --apply
-  echo 'Tools and configuration installed. Agent authentication, sidebar event hooks, project SDK health and Windows acceptance checks remain local; see README.'
+  echo 'Tools, configuration and sidebar hooks installed. Restart running agents; Codex may request one-time /hooks trust. Agent login, project SDK health and Windows acceptance checks remain local; see README.'
   # Print versions without credentials; no startup updates or auth checks.
   for tool in git gh tmux nvim node pnpm dotnet cargo rustc starship zoxide eza fzf fd rg bat jq lazygit claude codex; do
     printf '%s: ' "$tool"
