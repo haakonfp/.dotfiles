@@ -18,9 +18,23 @@ cd ~/.dotfiles-next
 ```
 
 Use your existing GitHub authentication. Install Git first if necessary. Keep
-this checkout at that path after installation: the installed links point into
-it. The old checkout remains available, and installer backups retain the old
-links. On a fresh PC you can choose `~/.dotfiles` instead.
+this checkout separate for the preview, then make `~/.dotfiles` permanent.
+For WSL, run:
+
+```bash
+./relocate --profile wsl
+./relocate --profile wsl --apply
+cd ~/.dotfiles
+```
+
+On an Epic work PC, add `--epic` to both commands; on Omarchy, replace the
+profile with `--profile omarchy`. This works before or after bootstrap. It
+enrolls configuration before moving the old checkout into
+`~/.local/state/dotfiles/checkouts/`, preserving its changes and private files,
+then moves the fresh checkout to `~/.dotfiles`, repairs links and updates backup
+records. Legacy links and restore operations can still use the archived checkout.
+Keep that hidden archive for restoration. The `-next` folder is gone afterward.
+On a fresh PC you can clone directly to `~/.dotfiles` instead.
 
 ## Another Omarchy PC
 
@@ -132,6 +146,8 @@ retained `gh solve/follow` helpers use isolated work profiles; elsewhere they
 use personal profiles. Use `EPIC_WORKSPACE` for another work root and rerun the
 explicit Epic bootstrap. Existing kubeconfigs and credentials are preserved.
 Complete [sidebar event-hook setup](agent-sidebar.md) for each account you use.
+The [Epic guide](epic.md) explains personal sign-in, separate work homes, how
+the shared gateway configures both clients, and Git identity versus SSH access.
 
 ## Restore
 

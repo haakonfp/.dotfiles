@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **101 tests passed**, including a private tmux server
+- Full expanded suite: **129 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -39,8 +39,11 @@ The second platform review found and fixed gaps not covered by the original
 - Runtime regressions cover a fresh machine without mise, old Node/pnpm,
   runtime-only/obsolete .NET, checkout-only SDK selections including an inherited
   activated PATH, preservation of
-  compatible versions and configuration backups. A separate offline check with
+  compatible versions and configuration backups. Earlier offline checks with
   actual mise and fixture runtimes verified global selection and activation.
+  The new mandatory `@latest` client selection requires online release metadata;
+  it is covered by offline installer fixtures here, with real downloads left for
+  the destination bootstrap.
 - A real headless Neovim fixture confirms that a failed Mason install lets
   another queued installer complete before returning failure with the log path.
 - Omarchy glassy/opaque mode removal is previewed, backed up and restored;
@@ -56,6 +59,13 @@ The second platform review found and fixed gaps not covered by the original
   loop, including migration from a linked Git configuration directory.
   Private dependency copies retain binary contents/executable permissions and
   a forced partial-copy failure restores the original directory link.
+- Canonical checkout migration covers preview, first enrollment, an existing
+  `-next` installation, dirty old checkout preservation, personal authentication,
+  absolute/relative backup links, restore after the move, and injected second
+  enrollment/metadata failures. Epic opt-in is inferred and can be disabled.
+- Real Git checks verify personal/work/sibling identity and credential-helper
+  scoping, including setting personal identity after Epic setup. The shared
+  gateway credential helper uses isolated work homes and provider environment.
 
 Omarchy 4.5's cold-start cursor hook is disabled only in the headless Hyprland
 parsing fixture, where there is no running compositor for that startup effect.

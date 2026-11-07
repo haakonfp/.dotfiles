@@ -13,16 +13,36 @@ git clone --branch main git@github.com:haakonfp/.dotfiles.git ~/.dotfiles
 cd ~/.dotfiles
 ```
 
-Use Bash and Python 3 to run the installer as your normal user. Keep the
-checkout in place: installed configuration files link to it.
+Use Bash and Python 3 to run the installer as your normal user. The permanent
+checkout should be `~/.dotfiles`: installed configuration files link to it.
 Preview performs no writes, package operations, downloads or sign-ins.
 
 For first rollout to the other PCs, including an existing checkout that already
 manages live files, follow [the machine-by-machine guide](docs/rollout.md).
 Use a separate fresh checkout for that migration so updating Git cannot change
 the old symlinked configuration before the installer has backed it up.
-The commands below assume `~/.dotfiles`; substitute your fresh checkout path
-if you used `~/.dotfiles-next` instead.
+Move that temporary checkout into the permanent location before continuing.
+
+### Finish a `.dotfiles-next` migration
+
+For Ubuntu WSL, whether bootstrap has already run or not:
+
+```bash
+cd ~/.dotfiles-next
+git pull --ff-only
+./relocate --profile wsl         # preview
+./relocate --profile wsl --apply # move and repair links
+cd ~/.dotfiles
+```
+
+For an Epic work PC, add `--epic` to both relocation commands; an existing Epic
+opt-in is retained automatically. On Omarchy, use `--profile omarchy` instead.
+The old checkout moves into `~/.local/state/dotfiles/checkouts/`, including its
+uncommitted/untracked files. Restore records and legacy links follow that archive.
+The new checkout becomes `~/.dotfiles`; no `-next` directory remains. A failed
+relocation attempts to restore both folders and the configuration.
+This step only moves/configures files. If bootstrap has not completed yet,
+continue with the appropriate commands below from `~/.dotfiles`.
 
 ### Another Omarchy PC
 
@@ -107,6 +127,12 @@ are installed by the Omarchy or ordinary WSL profile. Reinstalling without
 remain on disk. Start a new shell after changing profiles. There are no VPN
 diagnostics or changes to Windows VPN/network settings.
 
+The root Git loader reads personal defaults before the optional work gate, so
+later personal identity edits cannot override Epic repositories. Commit identity
+is separate from enterprise SSH authentication. See [the Epic setup guide](docs/epic.md)
+for personal/work logins, gateway setup for both clients, explicit launchers,
+Git identities and worktree/kubeconfig boundaries.
+
 ## What gets installed
 
 | Shared | Omarchy only | Opted-in WSL Epic only |
@@ -121,6 +147,9 @@ Git/gh, Neovim, tmux, zoxide, eza, fzf, fd, ripgrep, bat, jq, lazygit, Starship
 and the font family. Omarchy bootstrap also installs the minimal personal
 shortcut applications `foot`, `brave-bin`, and `spotify` with `omarchy pkg add`.
 It uses rustup and mise without changing project toolchain overrides.
+Each explicit bootstrap installs or updates `claude@latest` and `codex@latest`
+through mise, shared by the personal and Epic profiles with separate login homes.
+The Epic gateway is installed/configured only by the explicit `epic-ai-setup` step.
 The Node/pnpm baseline is 26.8.2/12.11.2. Compatible tools are retained;
 missing or older Node/pnpm versions are installed through mise automatically.
 For .NET, an existing SDK version 8 or newer is retained; missing, obsolete or
