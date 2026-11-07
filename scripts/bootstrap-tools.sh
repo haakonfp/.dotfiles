@@ -227,9 +227,9 @@ bootstrap_neovim() {
   if command -v nvim >/dev/null && nvim --clean --headless '+lua if vim.fn.has("nvim-0.12.0") == 0 then vim.cmd("cquit 1") end' +qa >/dev/null 2>&1; then
     return 0
   fi
-  if command -v bob >/dev/null; then
-    bootstrap_error 'An incompatible Neovim is managed alongside bob; select Neovim >=0.12.0 explicitly before continuing.'; return 1
-  fi
+  # Provide the portable fallback even when another manager is installed.
+  # Its files/version selection remain intact; only a conflict at our own
+  # ~/.local/bin/nvim path needs manual reconciliation below.
   local arch archive target="$HOME/.local/opt/neovim-0.12.6"
   arch=$(uname -m)
   case $arch in x86_64) arch=x86_64 ;; aarch64|arm64) arch=arm64 ;; *) bootstrap_error "Unsupported Neovim architecture: $arch"; return 1 ;; esac
@@ -248,6 +248,7 @@ bootstrap_neovim() {
   else
     ln -s -- "$target/bin/nvim" "$HOME/.local/bin/nvim"
   fi
+  hash -r
 }
 bootstrap_tmux() {
   # A unique private server checks the actual parser, never an existing session.

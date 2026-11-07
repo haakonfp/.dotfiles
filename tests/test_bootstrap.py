@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import shlex
 import tempfile
+import tarfile
 import tomllib
 import unittest
 
@@ -1054,21 +1055,74 @@ package.preload['mason-registry'] = function() return {
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('username=test-user', result.stdout)
 
+    def neovim_archive_fixture(self):
+        # Isolate PATH so the reference PC's /usr/bin/nvim cannot mask absence.
+        local_bin = self.home / '.local/bin'
+        local_bin.mkdir(parents=True)
+        self.env['PATH'] = f'{local_bin}:{self.bin}'
+        for name in ('bash', 'uname', 'mkdir', 'tar', 'gzip', 'mv', 'ln', 'readlink'):
+            (self.bin / name).symlink_to('/usr/bin/' + name)
+        payload = self.root / 'payload/nvim-linux-x86_64/bin'
+        payload.mkdir(parents=True)
+        nvim = payload / 'nvim'
+        nvim.write_text('#!/bin/bash\nif [[ $1 == --version ]]; then echo "NVIM v0.12.6"; fi\nexit 0\n')
+        nvim.chmod(0o755)
+        archive = self.root / 'nvim.tar.gz'
+        with tarfile.open(archive, 'w:gz') as bundle:
+            bundle.add(payload.parent, arcname='nvim-linux-x86_64')
+        self.env['FIXTURE_NVIM_ARCHIVE'] = str(archive)
+        self.fake('curl', '''exec /usr/bin/python3 -c 'import os,shutil,sys
+args=sys.argv[1:]
+assert args[-3] == "https://github.com/neovim/neovim/releases/download/v0.12.6/nvim-linux-x86_64.tar.gz", args
+shutil.copyfile(os.environ["FIXTURE_NVIM_ARCHIVE"], args[args.index("-o")+1])' "$@"''')
+
+    def test_missing_neovim_is_installed_when_unused_bob_is_present(self):
+        self.neovim_archive_fixture()
+        self.fake('bob', 'echo "unused bob must not be invoked" >&2; exit 99')
+        old = self.home / '.local/share/bob/nvim-bin/nvim'
+        old.parent.mkdir(parents=True)
+        old.write_text('old Bob proxy preserved')
+        result = self.library('bootstrap_stage=' + shlex.quote(str(self.root)) +
+                              '; bootstrap_neovim; nvim --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('NVIM v0.12.6', result.stdout)
+        self.assertEqual(old.read_text(), 'old Bob proxy preserved')
+        expected = self.home / '.local/opt/neovim-0.12.6/bin/nvim'
+        self.assertEqual((self.home / '.local/bin/nvim').resolve(), expected)
+        fresh = self.library('nvim --version')
+        self.assertEqual(fresh.returncode, 0, fresh.stderr)
+        self.assertIn('NVIM v0.12.6', fresh.stdout)
+
+    def test_neovim_fallback_replaces_cached_system_command_selection(self):
+        self.neovim_archive_fixture()
+        self.fake('bob', 'echo "unrelated bob must not block an upgrade" >&2; exit 99')
+        system_bin = self.root / 'system-bin'
+        system_bin.mkdir()
+        old = system_bin / 'nvim'
+        old.write_text('#!/bin/bash\nif [[ $1 == --version ]]; then echo "NVIM v0.11.2"; exit 0; fi\nexit 1\n')
+        old.chmod(0o755)
+        self.env['PATH'] += ':' + str(system_bin)
+        result = self.library('bootstrap_stage=' + shlex.quote(str(self.root)) +
+                              '; nvim --version; bootstrap_neovim; nvim --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['NVIM v0.11.2', 'NVIM v0.12.6'])
+
     def test_neovim_floor_matches_locked_treesitter(self):
         # Emulate vim.fn.has for the installed version at the process boundary.
-        # The copied Treesitter lock requires 0.12; 0.11 must reach the manager-conflict branch.
+        # The copied Treesitter lock requires 0.12; 0.11 must request the fallback.
         self.fake('bob', 'exit 99')
         for installed, acceptable in (('0.11.2', False), ('0.11.9', False),
                                       ('0.12.0', True), ('0.12.6', True)):
             with self.subTest(installed=installed):
                 body = '/usr/bin/python3 -c \'import re,sys; installed=tuple(map(int, sys.argv[1].split("."))); requested=re.search(r"nvim-([0-9.]+)", " ".join(sys.argv[2:])).group(1); parts=list(map(int,requested.split("."))); parts += [0]*(3-len(parts)); sys.exit(0 if installed >= tuple(parts) else 1)\' ' + installed + ' "$@"'
                 self.fake('nvim', body)
-                result = self.library('bootstrap_neovim')
+                result = self.library('bootstrap_stage=' + shlex.quote(str(self.root)) +
+                                      '; bootstrap_fetch() { echo FALLBACK_REQUESTED >&2; return 66; }; bootstrap_neovim')
                 if acceptable:
                     self.assertEqual(result.returncode, 0, result.stderr)
                 else:
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn('Neovim >=0.12.0', result.stderr)
+                    self.assertEqual(result.returncode, 66, result.stderr)
+                    self.assertIn('FALLBACK_REQUESTED', result.stderr)
                 self.assertEqual(list(self.home.iterdir()), [])
 
     def test_dotnet_runtime_only_or_obsolete_sdk_gets_a_working_sdk(self):

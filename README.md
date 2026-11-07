@@ -162,7 +162,10 @@ Docker Desktop conflicts still require an explicit user choice.
 
 The editor lockfile requires Neovim 0.12 or later. Bootstrap provides upstream
 0.12.6 when necessary and checks tmux's actual extended-key support before using
-the distro version. Language servers/formatters are provisioned through Mason;
+the distro version. Bob's presence does not block provisioning a missing or old
+`nvim`; its files and selected version are preserved. An existing conflicting
+`~/.local/bin/nvim` is preserved for manual reconciliation.
+Language servers/formatters are provisioned through Mason;
 project-specific SDKs and package dependencies still belong to the projects.
 Plugin restoration and Mason installation share one Neovim process so installs
 stay alive. During bootstrap, its installer manages language tools after plugin

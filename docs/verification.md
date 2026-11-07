@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **142 tests passed**, including a private tmux server
+- Full expanded suite: **144 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -50,6 +50,10 @@ The second platform review found and fixed gaps not covered by the original
   The new mandatory `@latest` client selection requires online release metadata;
   it is covered by offline installer fixtures here, with real downloads left for
   the destination bootstrap.
+- Neovim fallback fixtures isolate PATH from this PC's executable. An unused Bob
+  installation no longer blocks a missing `nvim`; its files remain untouched,
+  and the portable binary works in a fresh shell. A separate regression confirms
+  Bash forgets a cached old system executable after the fallback is installed.
 - A real headless Neovim fixture confirms that a failed Mason install lets
   another queued installer complete before returning failure with the log path.
   Another reproduces installs started during plugin restoration: bootstrap keeps
