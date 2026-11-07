@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **144 tests passed**, including a private tmux server
+- Full expanded suite: **148 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -54,6 +54,12 @@ The second platform review found and fixed gaps not covered by the original
   installation no longer blocks a missing `nvim`; its files remain untouched,
   and the portable binary works in a fresh shell. A separate regression confirms
   Bash forgets a cached old system executable after the fallback is installed.
+- WSL fixtures cover global mise Neovim selection, preserving project pins and
+  Bob, a persistent command outside the checkout, migration from the owned
+  portable link, and preservation of an unrecognized local executable. Omarchy
+  provisioning does not add a mise Neovim default.
+  Actual mise downloaded Neovim 0.12.6 into a disposable home; bootstrap created
+  the shim link and a fresh Bash process launched it from outside the checkout.
 - A real headless Neovim fixture confirms that a failed Mason install lets
   another queued installer complete before returning failure with the log path.
   Another reproduces installs started during plugin restoration: bootstrap keeps

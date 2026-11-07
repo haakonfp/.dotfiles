@@ -160,11 +160,14 @@ unrelated entries and project version pins remain. Bootstrap activates the mise
 environment immediately so Mason sees the SDK from its install directory too.
 Docker Desktop conflicts still require an explicit user choice.
 
-The editor lockfile requires Neovim 0.12 or later. Bootstrap provides upstream
-0.12.6 when necessary and checks tmux's actual extended-key support before using
-the distro version. Bob's presence does not block provisioning a missing or old
-`nvim`; its files and selected version are preserved. An existing conflicting
-`~/.local/bin/nvim` is preserved for manual reconciliation.
+The editor lockfile requires Neovim 0.12 or later. WSL bootstrap installs and
+globally selects `neovim@0.12.6` through mise, with a persistent `nvim` shim link
+in `~/.local/bin`. It replaces this bootstrap's old portable Neovim link while
+retaining the downloaded binary and Bob's files/selection. An unrecognized
+`~/.local/bin/nvim` is preserved for manual reconciliation. Project mise pins
+remain in effect inside those projects. Omarchy keeps compatible system Neovim;
+its fallback supplies upstream 0.12.6 when needed. Bootstrap checks tmux's actual
+extended-key support before using the distro version.
 Language servers/formatters are provisioned through Mason;
 project-specific SDKs and package dependencies still belong to the projects.
 Plugin restoration and Mason installation share one Neovim process so installs

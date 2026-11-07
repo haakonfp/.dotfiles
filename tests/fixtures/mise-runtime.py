@@ -32,10 +32,12 @@ if args[0] == 'use':
         line = f'{name} = "{version}"'
         pattern = rf'(?m)^{name}\s*=.*$'
         text = re.sub(pattern, line, text) if re.search(pattern, text) else text + line + '\n'
-        binary = root / 'bin' / name
+        binary = root / 'bin' / ('nvim' if name == 'neovim' else name)
         binary.parent.mkdir(exist_ok=True)
         if name == 'dotnet':
             body = 'if [[ $1 == --list-sdks ]]; then echo "10.0.100 [/fixture/sdk]"; else echo 10.0.100; fi'
+        elif name == 'neovim':
+            body = 'if [[ $1 == --version ]]; then echo ' + shlex.quote('NVIM v' + version) + '; fi'
         else:
             body = 'echo ' + shlex.quote(('v' if name == 'node' else '') + version)
         binary.write_text('#!/bin/bash\n' + body + '\n')
@@ -52,5 +54,13 @@ elif args[0] == 'which':
     if not binary.exists():
         sys.exit(1)
     print(binary)
-elif args[0] != 'reshim':
+elif args[0] == 'reshim':
+    data = Path(os.environ.get('MISE_DATA_DIR', Path(os.environ.get('XDG_DATA_HOME', home / '.local/share')) / 'mise'))
+    shims = data / 'shims'
+    shims.mkdir(parents=True, exist_ok=True)
+    for binary in (root / 'bin').glob('*'):
+        shim = shims / binary.name
+        shim.unlink(missing_ok=True)
+        shim.symlink_to(binary)
+else:
     sys.exit('Unexpected mise command: ' + repr(args))

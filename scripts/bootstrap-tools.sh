@@ -155,7 +155,7 @@ bootstrap_dotnet_sdk() {
   return 1
 }
 bootstrap_mise() {
-  local tool spec current minimum backup='' environment result
+  local profile=${1:-omarchy} tool spec current minimum backup='' environment result
   local config_dir="${MISE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mise}"
   local config="$config_dir/conf.d/dotfiles.toml"
   local global_config="${MISE_GLOBAL_CONFIG_FILE:-$config_dir/config.toml}"
@@ -171,6 +171,7 @@ bootstrap_mise() {
     fi
   done
   bootstrap_dotnet_sdk || runtimes+=(dotnet@10)
+  [[ $profile != wsl ]] || runtimes+=(neovim@0.12.6)
   if ! command -v mise >/dev/null; then
     bootstrap_fetch https://mise.run "$bootstrap_stage/mise.sh"
     MISE_INSTALL_PATH="$HOME/.local/bin/mise" bash "$bootstrap_stage/mise.sh"
@@ -223,8 +224,32 @@ bootstrap_mise() {
   bootstrap_dotnet_sdk || { bootstrap_error 'Mise provisioning did not activate a .NET SDK >=8; inspect mise overrides and DOTNET_ROOT before retrying.'; return 1; }
 }
 bootstrap_neovim() {
+  local profile=${1:-omarchy}
+  local check='+lua if vim.fn.has("nvim-0.12.0") == 0 then vim.cmd("cquit 1") end'
+  if [[ $profile == wsl ]]; then
+    local selected shim entry previous
+    selected=$(mise -C / which nvim) || {
+      bootstrap_error 'Mise has no global Neovim; rerun bootstrap to provision it.'; return 1;
+    }
+    "$selected" --clean --headless "$check" +qa >/dev/null 2>&1 || {
+      bootstrap_error 'Mise Neovim must be >=0.12.0 for the locked editor plugins.'; return 1;
+    }
+    shim="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims/nvim"
+    [[ -x $shim ]] || { bootstrap_error 'Mise Neovim shim is missing; run mise reshim and retry.'; return 1; }
+    entry="$HOME/.local/bin/nvim"
+    if [[ -e $entry || -L $entry ]]; then
+      previous=$(readlink -- "$entry" 2>/dev/null) || previous=''
+      if [[ ! -L $entry || ( $previous != "$shim" && $previous != "$HOME/.local/opt/neovim-0.12.6/bin/nvim" ) ]]; then
+        bootstrap_error 'Preserving existing ~/.local/bin/nvim; move it aside before selecting mise.'; return 1
+      fi
+    fi
+    mkdir -p -- "${entry%/*}"
+    ln -sfn -- "$shim" "$entry"
+    hash -r
+    return 0
+  fi
   # The locked nvim-treesitter revision requires Neovim 0.12.0 or newer.
-  if command -v nvim >/dev/null && nvim --clean --headless '+lua if vim.fn.has("nvim-0.12.0") == 0 then vim.cmd("cquit 1") end' +qa >/dev/null 2>&1; then
+  if command -v nvim >/dev/null && nvim --clean --headless "$check" +qa >/dev/null 2>&1; then
     return 0
   fi
   # Provide the portable fallback even when another manager is installed.
@@ -439,7 +464,7 @@ bootstrap_main() {
   fi
   if $dry_run; then
     printf 'Would provision %s: core tools, Rust stable/Cargo/rustfmt/Clippy, mise Node 26.8.2/pnpm 12.11.2, install/update latest Claude/Codex (including existing clients), font family, pinned tmux sidebar; then install --apply.\n' "$profile"
-    [[ $profile != wsl ]] || echo 'Would preflight native Docker ownership, install Ubuntu Docker Engine/Compose/Buildx, configure service/group access and select Bash.'
+    [[ $profile != wsl ]] || echo 'Would provision Neovim 0.12.6 globally through mise; preflight native Docker ownership, install Ubuntu Docker Engine/Compose/Buildx, configure service/group access and select Bash.'
     $epic && echo 'Would add optional Epic shell links, conditional local Git include and non-destructive Windows kubeconfig link; no AI homes or SSO.'
     $windows_fonts && echo 'Would install Windows host fonts.'
     [[ -z $windows_settings ]] || printf 'Would merge Windows Terminal settings at %s.\n' "$windows_settings"
@@ -460,8 +485,8 @@ bootstrap_main() {
   bootstrap_packages "$profile"
   bootstrap_alias_commands
   bootstrap_rust
-  bootstrap_mise
-  bootstrap_neovim
+  bootstrap_mise "$profile"
+  bootstrap_neovim "$profile"
   bootstrap_tmux
   "$repo/scripts/install-tmux-plugins"
   local -a font_args=() install_args=(--profile "$profile" --apply)

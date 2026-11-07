@@ -28,7 +28,10 @@ class BootstrapTests(unittest.TestCase):
                         XDG_CONFIG_HOME=str(self.home / '.config'),
                         XDG_DATA_HOME=str(self.home / '.local/share'),
                         XDG_STATE_HOME=str(self.home / '.local/state'),
-                        XDG_CACHE_HOME=str(self.home / '.cache'))
+                        XDG_CACHE_HOME=str(self.home / '.cache'),
+                        MISE_DATA_DIR=str(self.home / '.local/share/mise'),
+                        MISE_CACHE_DIR=str(self.home / '.cache/mise'),
+                        MISE_STATE_DIR=str(self.home / '.local/state/mise'))
         for name in ('MISE_CONFIG_DIR', 'MISE_GLOBAL_CONFIG_FILE'):
             self.env.pop(name, None)
         for name in ('sudo', 'curl', 'apt-get', 'cargo', 'rustup', 'git', 'mise', 'cmd.exe', 'wslpath'):
@@ -1106,6 +1109,61 @@ shutil.copyfile(os.environ["FIXTURE_NVIM_ARCHIVE"], args[args.index("-o")+1])' "
                               '; nvim --version; bootstrap_neovim; nvim --version')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(result.stdout.splitlines(), ['NVIM v0.11.2', 'NVIM v0.12.6'])
+
+    def test_wsl_neovim_uses_global_mise_and_persistent_command_with_bob_present(self):
+        self.runtime_fixture()
+        self.fake('bob', 'echo "Bob must not be modified" >&2; exit 99')
+        project = self.home / 'project'
+        project.mkdir()
+        project_config = project / 'mise.toml'
+        project_config.write_text('[tools]\nneovim = "0.11.2"\n')
+        result = self.library('cd ' + shlex.quote(str(project)) +
+                              '; bootstrap_mise wsl; bootstrap_neovim wsl; cd /; nvim --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        config = self.home / '.config/mise/config.toml'
+        self.assertEqual(tomllib.loads(config.read_text())['tools'].get('neovim'), '0.12.6')
+        self.assertEqual(project_config.read_text(), '[tools]\nneovim = "0.11.2"\n')
+        shim = self.home / '.local/share/mise/shims/nvim'
+        target = self.home / '.local/bin/nvim'
+        self.assertTrue(target.is_symlink(), 'Missing persistent Neovim command')
+        self.assertEqual(os.readlink(target), str(shim))
+        fresh = self.library('PATH="$HOME/.local/bin:/usr/bin:/bin"; cd /; nvim --version')
+        self.assertEqual(fresh.returncode, 0, fresh.stderr)
+        self.assertIn('NVIM v0.12.6', fresh.stdout)
+        self.assertFalse((self.home / '.local/opt/neovim-0.12.6').exists())
+
+    def test_wsl_mise_replaces_only_its_old_portable_neovim_link(self):
+        self.runtime_fixture()
+        portable = self.home / '.local/opt/neovim-0.12.6/bin/nvim'
+        portable.parent.mkdir(parents=True)
+        portable.write_text('#!/bin/bash\necho "old portable fixture"\n')
+        portable.chmod(0o755)
+        target = self.home / '.local/bin/nvim'
+        target.parent.mkdir(parents=True)
+        target.symlink_to(portable)
+        result = self.library('bootstrap_mise wsl; bootstrap_neovim wsl')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(os.readlink(target), str(self.home / '.local/share/mise/shims/nvim'))
+        self.assertIn('old portable fixture', portable.read_text())
+
+    def test_wsl_mise_preserves_unrecognized_local_neovim_file(self):
+        self.runtime_fixture()
+        target = self.home / '.local/bin/nvim'
+        target.parent.mkdir(parents=True)
+        original = '#!/bin/bash\necho "custom Neovim"\n'
+        target.write_text(original)
+        target.chmod(0o755)
+        result = self.library('bootstrap_mise wsl; bootstrap_neovim wsl')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(target.read_text(), original)
+        self.assertIn('preserv', result.stderr.lower())
+
+    def test_omarchy_does_not_add_a_mise_neovim_default(self):
+        self.runtime_fixture()
+        result = self.library('bootstrap_mise omarchy')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        config = self.home / '.config/mise/config.toml'
+        self.assertNotIn('neovim', tomllib.loads(config.read_text())['tools'])
 
     def test_neovim_floor_matches_locked_treesitter(self):
         # Emulate vim.fn.has for the installed version at the process boundary.
