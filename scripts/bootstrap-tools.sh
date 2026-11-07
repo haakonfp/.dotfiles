@@ -473,12 +473,15 @@ bootstrap_main() {
     bootstrap_error 'The WSL profile requires Ubuntu WSL.'; return 1
   fi
   [[ $profile != wsl ]] || bootstrap_wsl2 || return
+  python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' || {
+    bootstrap_error 'Dotfiles requires Python 3.11 or newer (Ubuntu 24.04+ or current Omarchy).'; return 1;
+  }
   if [[ $profile != wsl ]] && { $windows_fonts || [[ -n $windows_settings ]]; }; then
     bootstrap_error 'Windows options require Ubuntu WSL.'; return 1
   fi
   if $dry_run; then
     printf 'Would provision %s: core tools, Rust stable/Cargo/rustfmt/Clippy, mise Node 26.8.2/pnpm 12.11.2, install/update latest Claude/Codex (including existing clients), font family, pinned tmux sidebar; then install --apply.\n' "$profile"
-    [[ $profile != wsl ]] || echo 'Would provision Neovim 0.12.6 globally through mise; preflight native Docker ownership, install Ubuntu Docker Engine/Compose/Buildx, configure service/group access and select Bash.'
+    [[ $profile != wsl ]] || echo 'Would resolve latest stable Neovim globally through mise without a release-age delay; preflight native Docker ownership, install Ubuntu Docker Engine/Compose/Buildx, configure service/group access and select Bash.'
     $epic && echo 'Would add optional Epic shell links, conditional local Git include and non-destructive Windows kubeconfig link; no AI homes or SSO.'
     $windows_fonts && echo 'Would install Windows host fonts.'
     [[ -z $windows_settings ]] || printf 'Would merge Windows Terminal settings at %s.\n' "$windows_settings"

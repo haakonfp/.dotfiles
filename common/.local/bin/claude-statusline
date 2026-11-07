@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Render documented Claude Code statusLine JSON, without network access.
+
+https://code.claude.com/docs/en/statusline
+Only supplied metrics are displayed; Git is an optional bounded local read.
+Set NO_COLOR to suppress the script's fixed ANSI colors.
+"""
+import json
+import math
+import os
+import subprocess
+import sys
+import unicodedata
+
+
+def object_value(value):
+    return value if isinstance(value, dict) else {}
+
+
+def clean(value, limit=160):
+    """Remove terminal controls, bidi formatting, and unbounded text."""
+    if not isinstance(value, str):
+        return ''
+    return ''.join(char for char in value
+                   if not unicodedata.category(char).startswith('C')
+                   and char not in '\u2028\u2029')[:limit]
+
+
+def number(value, *, percent=False):
+    if (not isinstance(value, (int, float)) or isinstance(value, bool)
+            or value < 0 or value > 2**63 - 1 or not math.isfinite(value)):
+        return None
+    if percent and value > 100:
+        return None
+    return value
+
+
+def branch_at(directory):
+    if not isinstance(directory, str) or not directory or '\x00' in directory:
+        return ''
+    # Inherited GIT_DIR/WORK_TREE/config injection must not redirect this lookup.
+    env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
+    env['GIT_OPTIONAL_LOCKS'] = '0'
+    try:
+        result = subprocess.run(
+            ['git', '--no-optional-locks', '-C', directory, '-c', 'core.fsmonitor=false',
+             'symbolic-ref', '--quiet', '--short', 'HEAD'],
+            env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, timeout=0.35, check=False,
+            encoding='utf-8', errors='replace')
+        return clean(result.stdout.strip(), 100) if result.returncode == 0 else ''
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return ''
+
+
+def render(payload, *, colors=False):
+    data = object_value(payload)
+    model = clean(object_value(data.get('model')).get('display_name'), 80)
+    directory = object_value(data.get('workspace')).get('current_dir')
+    context = object_value(data.get('context_window'))
+    parts = []
+
+    def add(text, color):
+        if text:
+            parts.append(f'\033[{color}m{text}\033[0m' if colors else text)
+
+    add(model, 36)
+    add(clean(directory), 34)
+    add(branch_at(directory), 35)
+    remaining = number(context.get('remaining_percentage'), percent=True)
+    if remaining is not None:
+        add(f'{remaining:g}% context left', 32)
+    size = number(context.get('context_window_size'))
+    if size is not None:
+        add(f'context {size:,.0f}', 37)
+    incoming = number(context.get('total_input_tokens'))
+    outgoing = number(context.get('total_output_tokens'))
+    current = object_value(context.get('current_usage'))
+    if incoming is None:
+        inputs = [number(current.get(key)) for key in
+                  ('input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')]
+        if any(item is not None for item in inputs):
+            incoming = sum(item for item in inputs if item is not None)
+    if outgoing is None:
+        outgoing = number(current.get('output_tokens'))
+    tokens = []
+    if incoming is not None:
+        tokens.append(f'{incoming:,.0f} in')
+    if outgoing is not None:
+        tokens.append(f'{outgoing:,.0f} out')
+    if tokens:
+        add('tokens ' + ' / '.join(tokens), 37)
+    weekly = object_value(object_value(data.get('rate_limits')).get('seven_day'))
+    used = number(weekly.get('used_percentage'), percent=True)
+    if used is not None:
+        add(f'week {100 - used:g}% left', 33)
+    return ' | '.join(parts)
+
+
+def main():
+    try:
+        raw = sys.stdin.read(1024 * 1024 + 1)
+        payload = json.loads(raw) if len(raw) <= 1024 * 1024 else {}
+    except (ValueError, OSError):
+        payload = {}
+    print(render(payload, colors='NO_COLOR' not in os.environ))
+
+
+if __name__ == '__main__':
+    main()

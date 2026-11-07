@@ -1,0 +1,105 @@
+import json
+from pathlib import Path
+import unittest
+import test_bootstrap
+
+
+class EpicSetupTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = test_bootstrap.BootstrapTests()
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        self.fixture.wsl()
+        self.home = self.fixture.home
+        library = self.home / '.config/dotfiles/shell/epic.bash'
+        library.parent.mkdir(parents=True)
+        library.symlink_to(test_bootstrap.REPO / 'epic/.config/dotfiles/shell/epic.bash')
+        codex = self.home / '.codex-epic'
+        codex.mkdir()
+        (codex / 'config.toml').write_text('model_provider="epic"\n')
+        (codex / 'claude-gateway.json').write_text('{}')
+
+    def run_setup(self):
+        return self.fixture.run_script('epic/.local/bin/epic-ai-setup')
+
+    def gateway(self):
+        self.fixture.fake('claude-gateway', '''
+[[ $1 == run ]] || { echo 'Working Codex must not be set up again' >&2; exit 93; }
+printf '{"apiKeyHelper":"claude-gateway token"}\n' > "$CLAUDE_CONFIG_DIR/settings.json"
+printf '{}\n' > "$CLAUDE_GATEWAY_USER_CONFIG_FILE"
+''')
+
+    def test_success_without_profile_files_is_reported_as_failure(self):
+        self.fixture.fake('claude-gateway', 'echo "fixture SSO success"; exit 0')
+        result = self.run_setup()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('settings.json', result.stderr)
+        self.assertNotIn('Setup finished', result.stdout)
+        self.assertEqual((self.home / '.codex-epic/config.toml').read_text(), 'model_provider="epic"\n')
+
+    def test_valid_partial_claude_profile_is_backed_up_and_completed(self):
+        profile = self.home / '.claude-epic'
+        profile.mkdir()
+        original = '{"custom":"keep in backup"}\n'
+        (profile / 'settings.json').write_text(original)
+        self.gateway()
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((profile / 'gateway-helper-config.json').is_file())
+        self.assertEqual(json.loads((profile / 'settings.json').read_text())['permissions']['defaultMode'], 'acceptEdits')
+        backups = list((self.home / '.local/state/dotfiles/epic-setup').rglob('settings.json'))
+        self.assertTrue(any(path.read_text() == original for path in backups))
+
+    def test_gateway_owned_default_profile_moves_into_epic_before_launch(self):
+        legacy = self.home / '.claude'
+        legacy.mkdir()
+        (legacy / 'settings.json').write_text('{"apiKeyHelper":"claude-gateway token"}')
+        (legacy / 'gateway-helper-config.json').write_text('{}')
+        (legacy / '.credentials.json').write_bytes(b'private fixture bytes')
+        self.fixture.fake('claude-gateway', 'echo "Existing work profiles must not be reauthenticated" >&2; exit 94')
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        epic = self.home / '.claude-epic'
+        self.assertEqual((epic / '.credentials.json').read_bytes(), b'private fixture bytes')
+        self.assertFalse((legacy / 'gateway-helper-config.json').exists())
+        self.assertEqual(json.loads((epic / 'settings.json').read_text())['apiKeyHelper'], 'claude-gateway token')
+
+    def installer(self, fail=False):
+        profile = self.home / '.claude-epic'
+        profile.mkdir()
+        (profile / 'settings.json').write_text('{"before":"installer"}\n')
+        body = '''cat > "${@: -1}" <<'INSTALL'
+#!/bin/bash
+mkdir -p "$HOME/.local/bin"
+printf '{"apiKeyHelper":"claude-gateway token"}\n' > "$CLAUDE_CONFIG_DIR/settings.json"
+printf '{}\n' > "$CLAUDE_GATEWAY_USER_CONFIG_FILE"
+printf 'model_provider="changed-by-installer"\n' > "$CODEX_HOME/config.toml"
+printf '{"changed":true}\n' > "$CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE"
+printf '#!/bin/bash\nexit 99\n' > "$HOME/.local/bin/claude-gateway"
+chmod +x "$HOME/.local/bin/claude-gateway"
+'''
+        body += ('exit 19\n' if fail else '') + 'INSTALL\n'
+        self.fixture.fake('curl', body)
+
+    def test_installer_is_backed_up_first_and_preserves_complete_codex(self):
+        self.installer()
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        backups = list((self.home / '.local/state/dotfiles/epic-setup').rglob('settings.json'))
+        self.assertTrue(any(path.read_text() == '{"before":"installer"}\n' for path in backups))
+        codex = self.home / '.codex-epic'
+        self.assertIn('"epic"', (codex / 'config.toml').read_text())
+        self.assertNotIn('changed-by-installer', (codex / 'config.toml').read_text())
+        self.assertEqual((codex / 'claude-gateway.json').read_text(), '{}')
+
+    def test_failed_installer_restores_preexisting_complete_codex(self):
+        self.installer(fail=True)
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 19, result.stdout + result.stderr)
+        codex = self.home / '.codex-epic'
+        self.assertEqual((codex / 'config.toml').read_text(), 'model_provider="epic"\n')
+        self.assertEqual((codex / 'claude-gateway.json').read_text(), '{}')
+
+
+if __name__ == '__main__':
+    unittest.main()

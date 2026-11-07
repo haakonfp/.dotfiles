@@ -135,7 +135,7 @@ class BootstrapTests(unittest.TestCase):
             root = self.home / directory
             root.mkdir()
             for file in files:
-                (root / file).write_text('{}')
+                (root / file).write_text('' if file == 'config.toml' else '{}')
 
     def test_missing_epic_profiles_fail_without_personal_fallback(self):
         self.wsl()
@@ -215,7 +215,8 @@ class BootstrapTests(unittest.TestCase):
         self.fake('claude-gateway', 'exit 99')
         result = self.run_script('epic/.local/bin/epic-ai-setup')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(sentinel.read_text(), '{"existing":"keep"}')
+        self.assertEqual(json.loads(sentinel.read_text())['existing'], 'keep')
+        self.assertEqual(json.loads(sentinel.read_text())['permissions']['defaultMode'], 'acceptEdits')
         self.assertFalse((self.home / '.claude').exists())
 
     def library(self, script):

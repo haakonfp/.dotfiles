@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Explicit, interactive opt-in. Never migrate or rename existing account state.
+# Explicit, interactive opt-in. Only recognized legacy gateway profiles migrate.
 set -euo pipefail
 (($# == 0)) || { echo 'Usage: epic-ai-setup' >&2; exit 2; }
+python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' || {
+  echo 'Epic setup requires Python 3.11 or newer (Ubuntu 24.04+).' >&2; exit 1;
+}
 # Validate platform even if this executable was copied without installing the extension.
 release=$(uname -r)
 os=$(cat /etc/os-release)
@@ -18,48 +21,17 @@ for name in $(compgen -e); do
   esac
 done
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+# Prefer the managed clients over legacy ~/.local/bin wrapper scripts while
+# the gateway performs its dependency checks and configures a new profile.
+if command -v mise >/dev/null; then
+  for client in claude codex; do
+    if executable=$(mise -C / which "$client" 2>/dev/null); then
+      export PATH="${executable%/*}:$PATH"
+    fi
+  done
+fi
 export CLAUDE_CONFIG_DIR="$HOME/.claude-epic" CODEX_HOME="$HOME/.codex-epic"
 export CLAUDE_GATEWAY_USER_CONFIG_FILE="$CLAUDE_CONFIG_DIR/gateway-helper-config.json"
 export CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE="$CODEX_HOME/claude-gateway.json"
-install -d -m 700 "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"
-if [[ -f $CLAUDE_CONFIG_DIR/settings.json && -f $CLAUDE_GATEWAY_USER_CONFIG_FILE &&
-      -f $CODEX_HOME/config.toml && -f $CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE ]]; then
-  echo 'Epic profile files already exist; preserving them. Use claude-epic or codex-epic.'
-  exit 0
-fi
-# Preflight partial profiles before installing anything or contacting SSO.
-for pair in claude codex; do
-  if [[ $pair == claude ]]; then
-    first="$CLAUDE_CONFIG_DIR/settings.json"; second="$CLAUDE_GATEWAY_USER_CONFIG_FILE"
-  else
-    first="$CODEX_HOME/config.toml"; second="$CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE"
-  fi
-  if [[ -e $first || -L $first || -e $second || -L $second ]]; then
-    [[ -f $first && -f $second ]] || { echo "Partial Epic $pair profile exists; preserve and reconcile it before retrying." >&2; exit 1; }
-  fi
-done
-if ! command -v claude-gateway >/dev/null; then
-  echo 'Installing Epic gateway into the opted-in profiles; this may request Epic SSO.'
-  stage=$(mktemp -d)
-  trap 'rm -rf -- "$stage"' EXIT
-  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-    https://artifacts.ol.epicgames.net/artifactory/ai-gateway/install.sh -o "$stage/install.sh"
-  bash "$stage/install.sh"
-fi
-command -v claude-gateway >/dev/null || { echo 'claude-gateway is missing after installation.' >&2; exit 1; }
-# Avoid overwriting partial existing state: let the user inspect/reconcile it explicitly.
-for pair in claude codex; do
-  if [[ $pair == claude ]]; then
-    first="$CLAUDE_CONFIG_DIR/settings.json"; second="$CLAUDE_GATEWAY_USER_CONFIG_FILE"
-  else
-    first="$CODEX_HOME/config.toml"; second="$CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE"
-  fi
-  if [[ -e $first || -L $first || -e $second || -L $second ]]; then
-    [[ -f $first && -f $second ]] || { echo "Partial Epic $pair profile exists; preserve and reconcile it before retrying." >&2; exit 1; }
-  elif [[ $pair == claude ]]; then
-    claude-gateway run
-  else
-    claude-gateway codex setup
-  fi
-done
-printf 'Setup finished. Verify Epic identity with claude-epic and codex-epic before working.\n'
+repo=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../../.." && pwd -P)
+exec python3 "$repo/scripts/epic_setup.py"

@@ -8,10 +8,15 @@ import json
 import os
 from pathlib import Path
 import platform
+import runpy
+import shlex
 import shutil
 import sys
 import tempfile
 import time
+
+if sys.version_info < (3, 11):
+    raise SystemExit('Dotfiles requires Python 3.11 or newer (Ubuntu 24.04+ or current Omarchy).')
 
 REPO = Path(__file__).resolve().parents[1]
 SHARED = ('bash', 'common', 'nvim', 'tmux', 'gitconfig', 'gh', 'starship')
@@ -120,6 +125,26 @@ def preserve_directory_files(home, relative, desired):
             desired[name] = dict(kind='copy', source=str(old.resolve()))
 
 
+def ai_preferences(home, epic=False):
+    helper = runpy.run_path(str(REPO / 'scripts/ai_preferences.py'))
+    command = shlex.quote(str(home / '.local/bin/claude-statusline'))
+    homes = [(home / '.claude', home / '.codex')]
+    if epic:
+        claude = home / '.claude-epic'
+        codex = home / '.codex-epic'
+        # UI defaults must not create a partial gateway profile before sign-in.
+        homes.append((claude if all((claude / name).is_file() for name in
+                                    ('settings.json', 'gateway-helper-config.json')) else None,
+                      codex if all((codex / name).is_file() for name in
+                                   ('config.toml', 'claude-gateway.json')) else None))
+    files = {}
+    for claude, codex in homes:
+        files.update(helper['preference_files'](claude_home=claude, codex_home=codex,
+                                               statusline_command=command))
+    return {str(path.relative_to(home)): dict(kind='write', content=text)
+            for path, text in files.items()}
+
+
 def plan_install(home, profile, epic=False, uninstall=False, preferences_only=False):
     packages = (*SHARED, *(('omarchy',) if profile == 'omarchy' else ()),
                 *(('epic',) if epic else ()))
@@ -137,6 +162,8 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
                 if (home / relative).is_symlink() and
                 Path(spec['source']).is_relative_to(REPO) and
                 (home / relative).resolve() == Path(spec['source']).resolve()]
+    if not preferences_only:
+        desired.update(ai_preferences(home, epic=epic))
     blockers = set()
     for relative in desired:
         for parent in (home / relative).parents:
@@ -403,7 +430,8 @@ def apply_plan(home, operations, desktop=False, projects=True):
             missing.append(path)
             path = path.parent
         for directory in reversed(missing):
-            directory.mkdir()
+            private = directory.relative_to(home).parts[0] in ('.claude', '.codex', '.claude-epic', '.codex-epic')
+            directory.mkdir(mode=0o700 if private else 0o777)
             data['created_dirs'].append(str(directory.relative_to(home)))
             save()
     save()
