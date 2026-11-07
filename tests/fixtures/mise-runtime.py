@@ -25,6 +25,10 @@ if args[0] == 'use':
         name, version = spec.split('@', 1)
         if name == 'dotnet':
             version = '10.0.100'
+        elif name == 'claude' and version == 'latest':
+            version = '2.7.4'
+        elif name == 'codex' and version == 'latest':
+            version = '0.167.0'
         line = f'{name} = "{version}"'
         pattern = rf'(?m)^{name}\s*=.*$'
         text = re.sub(pattern, line, text) if re.search(pattern, text) else text + line + '\n'

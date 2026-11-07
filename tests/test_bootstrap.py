@@ -1,10 +1,14 @@
 """Exercise provisioning boundaries without package installs or real account state."""
 import json
+import contextlib
+import importlib.util
+import io
 import os
 from pathlib import Path
 import subprocess
 import shlex
 import tempfile
+import tomllib
 import unittest
 
 REPO = Path(__file__).resolve().parents[1]
@@ -166,6 +170,21 @@ class BootstrapTests(unittest.TestCase):
                 self.assertNotIn(name, env)
             self.assertEqual(parent, 'PARENT:secret')
 
+    def test_personal_agent_first_invocation_creates_only_its_private_home(self):
+        self.wsl()
+        for agent, directory, unrelated in (('codex', '.codex', '.claude'), ('claude', '.claude', '.codex')):
+            with self.subTest(agent=agent):
+                self.agent(agent)
+                result = self.shell(agent)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                home = self.home / directory
+                self.assertTrue(home.is_dir())
+                self.assertEqual(home.stat().st_mode & 0o777, 0o700)
+                self.assertFalse((self.home / unrelated).exists())
+                home.rmdir()
+                for epic in ('.claude-epic', '.codex-epic'):
+                    self.assertFalse((self.home / epic).exists())
+
     def test_no_daemon_inserted_once_when_supported_inside_tmux(self):
         self.wsl()
         self.agent('codex')
@@ -264,9 +283,176 @@ class BootstrapTests(unittest.TestCase):
             self.assertNotIn('PRIVATE', result.stdout + result.stderr)
         self.assertEqual((self.home / '.kube/config').read_text(), 'PRIVATE KUBECONFIG')
         git = (self.home / '.gitconfig.local').read_text()
-        self.assertIn('Existing Person', git)
-        self.assertEqual(git.count('Optional WSL Epic workspace'), 1)
+        self.assertEqual(git, '[user]\n name = Existing Person\n')
         self.assertFalse((self.home / '.claude-epic').exists())
+
+    def test_epic_bootstrap_does_not_create_a_personal_git_config(self):
+        self.fake('cmd.exe', 'exit 1')
+        result = self.library('bootstrap_epic_local')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.home / '.gitconfig.local').exists())
+
+    def test_epic_bootstrap_removes_only_its_legacy_personal_include_with_backup(self):
+        self.fake('cmd.exe', 'exit 1')
+        local = self.home / '.gitconfig.local'
+        personal = '[user]\n name = Personal Person\n[include]\n path = ~/private-git.conf\n'
+        original = personal + '\n# Optional WSL Epic workspace\n[include]\n    path = ~/.config/dotfiles/git-epic-include.conf\n'
+        local.write_text(original)
+        for _ in range(2):
+            result = self.library('bootstrap_epic_local')
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(local.read_text(), personal)
+        backups = list(self.home.glob('.gitconfig.local.before-epic-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), original)
+
+    def test_epic_bootstrap_preserves_symlinked_personal_git_config(self):
+        self.fake('cmd.exe', 'exit 1')
+        target = self.home / 'private-git.conf'
+        original = '[user]\n name = Personal Person\n\n# Optional WSL Epic workspace\n[include]\n    path = ~/.config/dotfiles/git-epic-include.conf\n'
+        target.write_text(original)
+        local = self.home / '.gitconfig.local'
+        local.symlink_to(target)
+        result = self.library('bootstrap_epic_local')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(local.is_symlink())
+        self.assertEqual(target.read_text(), original)
+
+    def test_opted_in_epic_bootstrap_creates_workspace_without_agent_homes(self):
+        self.fake('cmd.exe', 'exit 1')
+        result = self.library('bootstrap_epic_local')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.home / 'dev/epic').is_dir())
+        for directory in ('.claude', '.codex', '.claude-epic', '.codex-epic'):
+            self.assertFalse((self.home / directory).exists())
+
+    def test_epic_bootstrap_creates_only_the_configured_workspace(self):
+        self.fake('cmd.exe', 'exit 1')
+        workspace = self.home / 'work projects/Epic'
+        self.env['EPIC_WORKSPACE'] = str(workspace)
+        result = self.library('bootstrap_epic_local')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(workspace.is_dir())
+        self.assertFalse((self.home / 'dev/epic').exists())
+
+    def real_git(self, cwd, *args, input=None):
+        # Ignore inherited Git author/config overrides and the machine's Git
+        # configuration. Only these temporary local profiles participate.
+        env = {key: value for key, value in self.env.items()
+               if not key.startswith('GIT_') and key != 'EMAIL'}
+        env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=str(self.home / '.gitconfig'),
+                   GIT_TERMINAL_PROMPT='0', GIT_ASKPASS='/bin/false', SSH_ASKPASS='/bin/false')
+        return subprocess.run(['/usr/bin/git', '-C', str(cwd), *args], input=input,
+                              env=env, text=True, capture_output=True)
+
+    def epic_git_fixture(self):
+        self.wsl()
+        self.fake('cmd.exe', 'exit 1')
+        (self.home / '.gitconfig.local').write_text(
+            '[user]\n name = Personal Person\n email = personal@example.test\n')
+        result = self.library('bootstrap_epic_local')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config = self.home / '.config/dotfiles'
+        self.install_epic_profile_fixture()
+        with (config / 'git-epic.local').open('a') as stream:
+            stream.write('[user]\n name = Work Person\n email = work@example.test\n')
+        gateway = self.home / '.local/bin/claude-gateway'
+        gateway.parent.mkdir(parents=True, exist_ok=True)
+        gateway.write_text('#!/bin/bash\n'
+                           '[[ $1 == credential-helper && $2 == get ]] || exit 98\n'
+                           'cat >/dev/null\n'
+                           '/usr/bin/python3 -c \'import json,os; from pathlib import Path; keys = '
+                           '["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_GATEWAY_USER_CONFIG_FILE", '
+                           '"CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", '
+                           '"CLAUDE_GATEWAY_CONFIG_OVERRIDES"]; Path(os.environ["HOME"] + "/gateway-env.json")'
+                           '.write_text(json.dumps({key:os.environ[key] for key in keys if key in os.environ}))\'\n'
+                           'printf called >> "$HOME/gateway-calls"\n'
+                           'printf "username=work-fixture\\npassword=fixture-only\\n"\n')
+        gateway.chmod(0o755)
+
+    def install_epic_profile_fixture(self):
+        spec = importlib.util.spec_from_file_location('bootstrap_test_installer', REPO / 'scripts/install.py')
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        with contextlib.redirect_stdout(io.StringIO()):
+            operations = installer.plan_install(self.home, 'wsl', epic=True)
+            installer.apply_plan(self.home, operations)
+
+    def test_personal_identity_set_after_epic_setup_cannot_override_work_identity(self):
+        self.fake('cmd.exe', 'exit 1')
+        self.install_epic_profile_fixture()
+        result = self.library('bootstrap_epic_local')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path, name, email in (('.gitconfig.local', 'Personal Person', 'personal@example.test'),
+                ('.config/dotfiles/git-epic.local', 'Work Person', 'work@example.test')):
+            for key, value in (('user.name', name), ('user.email', email)):
+                configured = self.real_git(self.home, 'config', '--file', str(self.home / path), key, value)
+                self.assertEqual(configured.returncode, 0, configured.stderr)
+        for relative, email in (('dev/epic/project', 'work@example.test'),
+                                ('dev/personal/project', 'personal@example.test'),
+                                ('dev/epic-other/project', 'personal@example.test')):
+            with self.subTest(repo=relative):
+                repo = self.home / relative
+                repo.mkdir(parents=True)
+                initialized = self.real_git(repo, 'init', '-q')
+                self.assertEqual(initialized.returncode, 0, initialized.stderr)
+                identity = self.real_git(repo, 'config', '--get', 'user.email')
+                self.assertEqual(identity.returncode, 0, identity.stderr)
+                self.assertEqual(identity.stdout.strip(), email)
+
+    def install_git_helper_fixture(self):
+        shell = self.home / '.config/dotfiles/shell/epic.bash'
+        shell.parent.mkdir(parents=True, exist_ok=True)
+        shell.symlink_to(REPO / 'epic/.config/dotfiles/shell/epic.bash')
+        helper = self.home / '.local/bin/epic-git-credential'
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.symlink_to(REPO / 'epic/.local/bin/epic-git-credential')
+
+    def test_git_identity_rewrite_and_credentials_are_scoped_to_epic_repositories(self):
+        self.epic_git_fixture()
+        self.env.update(OPENAI_API_KEY='wrong', ANTHROPIC_API_KEY='wrong',
+                        CLAUDE_GATEWAY_CONFIG_OVERRIDES='wrong', CLAUDE_CONFIG_DIR='/wrong',
+                        CLAUDE_GATEWAY_USER_CONFIG_FILE='/wrong', CODEX_HOME='/wrong',
+                        CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE='/wrong')
+        for relative, work in (('dev/epic', True), ('dev/epic/team/project', True),
+                               ('dev/epic-other/project', False), ('dev/personal/project', False)):
+            repo = self.home / relative
+            repo.mkdir(parents=True, exist_ok=True)
+            with self.subTest(repo=relative):
+                initialized = self.real_git(repo, 'init', '-q')
+                self.assertEqual(initialized.returncode, 0, initialized.stderr)
+                identity = self.real_git(repo, 'var', 'GIT_AUTHOR_IDENT')
+                self.assertEqual(identity.returncode, 0, identity.stderr)
+                self.assertTrue(identity.stdout.startswith(
+                    'Work Person <work@example.test> ' if work else 'Personal Person <personal@example.test> '),
+                    identity.stdout)
+                remote = self.real_git(repo, 'remote', 'add', 'origin',
+                                       'https://github.ol.epicgames.net/team/project.git')
+                self.assertEqual(remote.returncode, 0, remote.stderr)
+                url = self.real_git(repo, 'remote', 'get-url', 'origin')
+                self.assertEqual(url.returncode, 0, url.stderr)
+                self.assertEqual(url.stdout.strip(), 'git@github.ol.epicgames.net:team/project.git' if work
+                                 else 'https://github.ol.epicgames.net/team/project.git')
+                marker = self.home / 'gateway-calls'
+                marker.unlink(missing_ok=True)
+                credentials = self.real_git(repo, 'credential', 'fill',
+                    input='protocol=https\nhost=live.roost.on.epicgames.com\n\n')
+                self.assertEqual(credentials.returncode == 0, work, credentials.stderr)
+                self.assertEqual(marker.exists(), work)
+                if work:
+                    self.assertIn('username=work-fixture', credentials.stdout)
+                    self.assertEqual(marker.read_text(), 'called')
+                    gateway_env = json.loads((self.home / 'gateway-env.json').read_text())
+                    self.assertEqual(gateway_env, {
+                        'CLAUDE_CONFIG_DIR': str(self.home / '.claude-epic'),
+                        'CODEX_HOME': str(self.home / '.codex-epic'),
+                        'CLAUDE_GATEWAY_USER_CONFIG_FILE': str(self.home / '.claude-epic/gateway-helper-config.json'),
+                        'CLAUDE_GATEWAY_CODEX_USER_CONFIG_FILE': str(self.home / '.codex-epic/claude-gateway.json')})
+                marker.unlink(missing_ok=True)
+                unrelated = self.real_git(repo, 'credential', 'fill',
+                    input='protocol=https\nhost=github.com\n\n')
+                self.assertNotEqual(unrelated.returncode, 0)
+                self.assertFalse(marker.exists(), 'enterprise helper ran for an unrelated host')
 
     def runtime_fixture(self):
         # Keep the process boundary offline; the real bootstrap chooses which
@@ -299,8 +485,10 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(), original)
         self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
-        self.assertIn(['use', '--path', str(config), '--pin', 'node@26.8.2', 'pnpm@12.11.2'], self.runtime_calls())
-        self.assertEqual(sum(call[0] == 'use' for call in self.runtime_calls()), 1)
+        self.assertIn(['use', '--path', str(config), '--pin', 'node@26.8.2', 'pnpm@12.11.2',
+                       'claude@latest', 'codex@latest'], self.runtime_calls())
+        self.assertIn(['use', '--path', str(config), '--pin', 'claude@latest', 'codex@latest'], self.runtime_calls())
+        self.assertEqual(sum(call[0] == 'use' for call in self.runtime_calls()), 2)
 
     def test_compatible_newer_node_is_preserved_when_pnpm_needs_upgrade(self):
         self.runtime_fixture()
@@ -311,21 +499,65 @@ class BootstrapTests(unittest.TestCase):
         self.assertIn('v28.1.0', result.stdout)
         self.assertIn('12.11.2', result.stdout)
         requests = [arg for call in self.runtime_calls() if call[0] == 'use' for arg in call if '@' in arg]
-        self.assertEqual(requests, ['pnpm@12.11.2'])
+        self.assertEqual(requests, ['pnpm@12.11.2', 'claude@latest', 'codex@latest'])
+
+    def test_existing_ai_clis_become_latest_global_mise_defaults_without_account_changes(self):
+        self.runtime_fixture()
+        old_binaries = {}
+        for tool in ('claude', 'codex'):
+            self.fake(tool, 'echo old-standalone-client')
+            old_binaries[tool] = (self.bin / tool).read_bytes()
+        config = self.home / '.config/mise/config.toml'
+        config.parent.mkdir(parents=True)
+        original = '[tools]\nclaude = "1.0.0"\ncodex = "0.1.0"\npython = "3.13"\n[settings]\nexperimental = true\n'
+        config.write_text(original)
+        project = self.home / 'project'
+        project.mkdir()
+        project_config = project / 'mise.toml'
+        project_config.write_text('[tools]\nnode = "22"\n')
+        personal = self.home / '.codex/auth.json'
+        personal.parent.mkdir()
+        personal.write_text('private fixture')
+        result = self.library('cd ' + shlex.quote(str(project)) +
+                              '; bootstrap_mise; claude --version; codex --version')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('2.7.4', result.stdout)
+        self.assertIn('0.167.0', result.stdout)
+        selected = tomllib.loads(config.read_text())
+        self.assertEqual(selected['tools'], {'claude': '2.7.4', 'codex': '0.167.0', 'python': '3.13'})
+        self.assertTrue(selected['settings']['experimental'])
+        self.assertEqual(project_config.read_text(), '[tools]\nnode = "22"\n')
+        self.assertEqual(personal.read_text(), 'private fixture')
+        backups = list(config.parent.glob('config.toml.before-dotfiles.*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), original)
+        for tool, content in old_binaries.items():
+            self.assertEqual((self.bin / tool).read_bytes(), content)
+        self.assertFalse((config.parent / 'conf.d/dotfiles.toml').exists())
+
+    def test_ai_update_failure_stops_bootstrap_with_supported_runtimes(self):
+        self.runtime_fixture()
+        self.env['FAKE_MISE_FAIL'] = '1'
+        result = self.library('bootstrap_mise; echo SHOULD_NOT_CONTINUE')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertNotIn('SHOULD_NOT_CONTINUE', result.stdout)
+        self.assertFalse(any(call[0] == 'env' for call in self.runtime_calls()))
 
     def test_fresh_runtime_setup_installs_all_three_without_manual_prerequisites(self):
         self.runtime_fixture()
         for tool in ('node', 'pnpm', 'dotnet'):
             (self.bin / tool).unlink()
         # Give this process ordinary shell utilities but no distro runtimes.
-        for tool in ('bash', 'sort', 'head', 'mkdir', 'mktemp', 'cp', 'readlink'):
+        for tool in ('bash', 'sort', 'head', 'mkdir', 'mktemp', 'cp', 'cmp', 'rm', 'readlink'):
             (self.bin / tool).symlink_to('/usr/bin/' + tool)
         self.env['PATH'] = str(self.bin)
-        result = self.library('bootstrap_mise; node --version; pnpm --version; dotnet --list-sdks')
+        result = self.library('bootstrap_mise; node --version; pnpm --version; dotnet --list-sdks; claude --version; codex --version')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('v26.8.2', result.stdout)
         self.assertIn('12.11.2', result.stdout)
         self.assertIn('10.0.100', result.stdout)
+        self.assertIn('2.7.4', result.stdout)
+        self.assertIn('0.167.0', result.stdout)
 
     def test_fresh_setup_also_installs_mise_when_missing(self):
         self.runtime_fixture()
@@ -333,7 +565,7 @@ class BootstrapTests(unittest.TestCase):
         (self.bin / 'mise').replace(binary)
         for tool in ('node', 'pnpm', 'dotnet'):
             (self.bin / tool).unlink()
-        for tool in ('bash', 'sort', 'head', 'mkdir', 'mktemp', 'cp', 'readlink'):
+        for tool in ('bash', 'sort', 'head', 'mkdir', 'mktemp', 'cp', 'cmp', 'rm', 'readlink'):
             (self.bin / tool).symlink_to('/usr/bin/' + tool)
         local_bin = self.home / '.local/bin'
         local_bin.mkdir(parents=True)
@@ -590,17 +822,16 @@ package.preload['mason-registry'] = function() return {
     def test_git_gate_removal_disables_corporate_settings_without_removing_identity(self):
         result = self.library('bootstrap_epic_local')
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.install_epic_profile_fixture()
         gate = self.home / '.config/dotfiles/git-epic-include.conf'
-        gate.symlink_to(REPO / 'epic/.config/dotfiles/git-epic-include.conf')
         repo = self.home / 'dev/epic/project'
         repo.mkdir(parents=True)
         subprocess.run(['/usr/bin/git', 'init', '-q', str(repo)], env=self.env, check=True)
-        command = ['/usr/bin/git', '-C', str(repo), 'config', '--get', 'url.git@github.ol.epicgames.net:.insteadOf']
-        enabled = subprocess.run(command, env=dict(self.env, GIT_CONFIG_GLOBAL=str(self.home / '.gitconfig.local')), text=True, capture_output=True)
+        enabled = self.real_git(repo, 'config', '--get', 'url.git@github.ol.epicgames.net:.insteadOf')
         self.assertEqual(enabled.returncode, 0, enabled.stderr)
         self.assertEqual(enabled.stdout.strip(), 'https://github.ol.epicgames.net/')
         gate.unlink()
-        disabled = subprocess.run(command, env=dict(self.env, GIT_CONFIG_GLOBAL=str(self.home / '.gitconfig.local')), text=True, capture_output=True)
+        disabled = self.real_git(repo, 'config', '--get', 'url.git@github.ol.epicgames.net:.insteadOf')
         self.assertNotEqual(disabled.returncode, 0)
         self.assertTrue((self.home / '.config/dotfiles/git-epic.local').exists())
 
@@ -632,11 +863,13 @@ package.preload['mason-registry'] = function() return {
         self.assertNotIn('unexpected external operation', result.stderr)
 
     def test_epic_credential_helper_runs_with_spaces_in_home(self):
+        self.wsl()
         self.fake('cmd.exe', 'exit 1')
         result = self.library('bootstrap_epic_local')
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.install_git_helper_fixture()
         binary = self.home / '.local/bin/claude-gateway'
-        binary.parent.mkdir(parents=True)
+        binary.parent.mkdir(parents=True, exist_ok=True)
         binary.write_text('#!/bin/bash\nprintf "username=test-user\\npassword=test-fixture\\n"\n')
         binary.chmod(0o755)
         config = self.home / '.config/dotfiles/git-epic.local'
@@ -685,7 +918,8 @@ package.preload['mason-registry'] = function() return {
         config.write_text('[tools]\nnode = "26.8.2"\n')
         result = self.library('bootstrap_mise')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(config.read_text(), '[tools]\nnode = "26.8.2"\n')
+        self.assertEqual(tomllib.loads(config.read_text())['tools'],
+                         {'node': '26.8.2', 'claude': '2.7.4', 'codex': '0.167.0'})
         self.assertFalse((config.parent / 'conf.d/dotfiles.toml').exists())
 
 

@@ -44,6 +44,14 @@ _epic_agent() {
         printf 'Epic Codex is not configured. Run: epic-ai-setup\n' >&2; return 1;
       }
     fi
+  else
+    # Codex requires an explicitly selected home to exist. Create only the
+    # invoked personal client's directory; existing account state stays intact.
+    local personal_home=$codex_home
+    [[ $agent != claude ]] || personal_home=$claude_home
+    if [[ ! -e $personal_home && ! -L $personal_home ]]; then
+      (umask 077; mkdir -p -- "$personal_home") || return
+    fi
   fi
   local argument no_daemon=false
   for argument in "$@"; do [[ $argument != --no-daemon ]] || no_daemon=true; done

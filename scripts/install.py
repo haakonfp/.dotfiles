@@ -238,6 +238,8 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
         loader = MARKER + GIT_SAVED_MARKER + json.dumps(saved_git, sort_keys=True) + '\n'
         for relative in (saved_git['xdg'], saved_git['root'], '.config/git/config', '.gitconfig.local'):
             loader += '[include]\n\tpath = ~/' + relative + '\n'
+        if epic:
+            loader += '[include]\n\tpath = ~/.config/dotfiles/git-epic-include.conf\n'
         desired['.gitconfig'] = dict(kind='write', content=loader)
     if profile == 'omarchy':
         for relative, content in desktop_preferences(home).items():
