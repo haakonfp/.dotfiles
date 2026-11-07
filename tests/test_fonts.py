@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -10,6 +11,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts/install-fonts.sh'
+# WSL's powershell.exe cannot consume the fixture's Linux filesystem paths.
+POWERSHELL = shutil.which('pwsh') or (shutil.which('powershell.exe') if os.name == 'nt' else None)
 STYLES = ['Thin','ThinItalic','ExtraLight','ExtraLightItalic','Light','LightItalic',
           'Regular','Italic','Medium','MediumItalic','SemiBold','SemiBoldItalic',
           'Bold','BoldItalic','ExtraBold','ExtraBoldItalic']
@@ -119,6 +122,28 @@ with open(os.environ['FONT_TEST_LOG'],'a') as f: f.write(json.dumps(sys.argv[1:]
         self.assertTrue(args[args.index('-File')+1].endswith('/windows/Install-Fonts.ps1'))
         self.assertEqual(args[args.index('-SourceDirectory')+1],
                          'C:\\Windows Share'+str(self.home / '.local/share/fonts/jetbrains-mono-nerd'))
+
+
+@unittest.skipUnless(POWERSHELL, 'PowerShell is required to execute the Windows font installer')
+class WindowsFontTests(unittest.TestCase):
+    def run_fixture(self, scenario):
+        with tempfile.TemporaryDirectory(prefix='windows font fixtures ') as directory:
+            result = subprocess.run([
+                POWERSHELL, '-NoProfile', '-NonInteractive', '-File',
+                str(ROOT / 'tests/fixtures/windows-fonts.ps1'),
+                '-Installer', str(ROOT / 'windows/Install-Fonts.ps1'),
+                '-FixtureRoot', directory, '-Scenario', scenario,
+            ], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_missing_font_registration_installs_and_repeat_is_unchanged(self):
+        self.run_fixture('fresh')
+
+    def test_partial_install_registers_only_missing_variant(self):
+        self.run_fixture('partial')
+
+    def test_registry_access_failure_stops_without_copying_fonts(self):
+        self.run_fixture('denied')
 
 
 if __name__ == '__main__':

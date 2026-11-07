@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **135 tests passed**, including a private tmux server
+- Full expanded suite: **138 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -36,6 +36,12 @@ The second platform review found and fixed gaps not covered by the original
 - Windows JSONC/profile/key merging, Unicode-path transport, font payload handling,
   Epic routing/isolation and bootstrap failure cases use executable temporary
   fixtures. Real Neovim startup-error behavior is tested with headless Neovim.
+- The Windows font installer executes under portable PowerShell with substituted
+  registry/native APIs. Regressions reproduce Windows PowerShell's terminating
+  missing-value error, cover fresh/partial installs and unchanged retries, preserve
+  unrelated registrations, and ensure access failures still stop installation.
+  These three tests require `pwsh` (or native Windows `powershell.exe`) on PATH;
+  they otherwise skip.
 - Runtime regressions cover a fresh machine without mise, old Node/pnpm,
   runtime-only/obsolete .NET, checkout-only SDK selections including an inherited
   activated PATH, preservation of

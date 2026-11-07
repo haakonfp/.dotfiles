@@ -88,7 +88,9 @@ foreach ($font in $fonts) {
     $style = $font.BaseName -replace '^JetBrainsMonoNerdFontMono-', ''
     $style = $style -creplace 'Italic$', ' Italic'
     $valueName = "JetBrainsMono Nerd Font Mono $($style.Trim()) (TrueType)"
-    $registered = Get-ItemPropertyValue -LiteralPath $registry -Name $valueName -ErrorAction SilentlyContinue
+    # A missing value is normal on first install. Windows PowerShell can throw
+    # from Get-ItemPropertyValue even with -ErrorAction SilentlyContinue.
+    $registered = (Get-Item -LiteralPath $registry).GetValue($valueName, $null)
     if (!$same) {
         try {
             Copy-Item -LiteralPath $font.FullName -Destination $target -Force
