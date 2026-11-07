@@ -108,6 +108,18 @@ def desktop_preferences(home):
     return output
 
 
+def preserve_directory_files(home, relative, desired):
+    """Retain private files behind a directory link without changing its target."""
+    for old in sorted((home / relative).rglob('*')):
+        name = str(old.relative_to(home))
+        if name in desired:
+            continue
+        if old.is_symlink() and not old.is_file():
+            desired[name] = dict(kind='link', source=str(old.resolve()))
+        elif old.is_file():
+            desired[name] = dict(kind='copy', source=str(old.resolve()))
+
+
 def plan_install(home, profile, epic=False, uninstall=False, preferences_only=False):
     packages = (*SHARED, *(('omarchy',) if profile == 'omarchy' else ()),
                 *(('epic',) if epic else ()))
@@ -226,15 +238,7 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
         if virtual_missing('.config/git/previous.config'):
             # Keep unselected local files when replacing a directory link:
             # relative includes and credential helpers may depend on them.
-            gitdir = home / '.config/git'
-            for old in sorted(gitdir.rglob('*')):
-                relative = str(old.relative_to(home))
-                if relative in desired:
-                    continue
-                if old.is_symlink() and not old.is_file():
-                    desired[relative] = dict(kind='link', source=str(old.resolve()))
-                elif old.is_file():
-                    desired[relative] = dict(kind='copy', source=str(old.resolve()))
+            preserve_directory_files(home, '.config/git', desired)
         loader = MARKER + GIT_SAVED_MARKER + json.dumps(saved_git, sort_keys=True) + '\n'
         for relative in (saved_git['xdg'], saved_git['root'], '.config/git/config', '.gitconfig.local'):
             loader += '[include]\n\tpath = ~/' + relative + '\n'
@@ -245,6 +249,8 @@ def plan_install(home, profile, epic=False, uninstall=False, preferences_only=Fa
         for relative, content in desktop_preferences(home).items():
             desired[relative] = dict(kind='write', content=content)
     if not preferences_only:
+        if virtual_missing('.config/gh/config.yml'):
+            preserve_directory_files(home, '.config/gh', desired)
         # Replacing a whole old directory link must not hide the machine-local
         # files deliberately excluded from the shared packages.
         for relative in ('.config/dotfiles/local.bash', '.config/tmux/local.conf',
@@ -447,6 +453,7 @@ def apply_plan(home, operations, desktop=False, projects=True):
         restore_manifest(home, manifest, apply=True, automatic=True)
         raise
     print(f'Backup manifest: {manifest}')
+    return manifest
 
 
 def main(argv=None):

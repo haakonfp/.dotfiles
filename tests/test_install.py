@@ -195,6 +195,25 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((self.home / '.config/nvim').is_symlink())
         self.assertTrue((self.home / '.config/nvim/init.lua').is_symlink())
 
+    def test_linked_gh_directory_preserves_local_authentication_files(self):
+        previous = Path(self.tmp.name) / 'old GitHub config'
+        previous.mkdir()
+        (previous / 'config.yml').write_text('git_protocol: ssh\n')
+        credentials = b'github.com:\n    oauth_token: fixture-only\n'
+        (previous / 'hosts.yml').write_bytes(credentials)
+        (previous / 'hosts.yml').chmod(0o600)
+        (self.home / '.config').mkdir()
+        (self.home / '.config/gh').symlink_to(previous, target_is_directory=True)
+        self.run_install('--profile', 'wsl', '--apply')
+        installed = self.home / '.config/gh/hosts.yml'
+        self.assertTrue(installed.is_file(), 'migration hid existing GitHub authentication')
+        self.assertEqual(installed.read_bytes(), credentials)
+        self.assertEqual(installed.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((previous / 'hosts.yml').read_bytes(), credentials)
+        manifest = next((self.home / '.local/state/dotfiles/backups').glob('*/manifest.json'))
+        self.run_install('--restore', str(manifest), '--apply')
+        self.assertEqual((self.home / '.config/gh').resolve(), previous)
+
     def test_restore_keeps_empty_directories_behind_original_directory_symlink(self):
         external = Path(self.tmp.name) / 'outside'
         (external / 'lua/config').mkdir(parents=True)
