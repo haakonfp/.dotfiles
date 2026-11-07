@@ -147,6 +147,21 @@ class BootstrapTests(unittest.TestCase):
         self.assertIn('epic-ai-setup', result.stderr)
         self.assertEqual(result.stdout, '')
 
+    def test_claude_information_flags_work_before_epic_profile_setup(self):
+        self.wsl()
+        self.agent('claude')
+        work = self.home / 'dev/epic'
+        work.mkdir(parents=True)
+        for flag in ('--version', '-v', '-h'):
+            with self.subTest(flag=flag):
+                result = self.shell('claude ' + flag, work)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)['args'], [flag])
+                self.assertFalse((self.home / '.claude-epic').exists())
+        result = self.shell('claude --help', work)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('not configured', result.stderr)
+
     def test_directory_boundary_symlinks_and_explicit_selection(self):
         self.wsl()
         self.agent('codex')

@@ -64,6 +64,27 @@ printf '{}\n' > "$CLAUDE_GATEWAY_USER_CONFIG_FILE"
         self.assertFalse((legacy / 'gateway-helper-config.json').exists())
         self.assertEqual(json.loads((epic / 'settings.json').read_text())['apiKeyHelper'], 'claude-gateway token')
 
+    def test_partial_target_keeps_live_token_cache_and_repairs_in_place(self):
+        legacy = self.home / '.claude'
+        legacy.mkdir()
+        original = '{"apiKeyHelper":"claude-gateway token","old":"profile"}'
+        (legacy / 'settings.json').write_text(original)
+        (legacy / 'gateway-helper-config.json').write_text('{}')
+        target = self.home / '.claude-epic'
+        (target / 'tokens/codex').mkdir(parents=True)
+        secret = target / 'tokens/codex/cache.enc'
+        secret.write_bytes(b'private existing gateway cache')
+        (target / 'gateway-helper-config.json').write_text('{}')
+        (target / '.claude.json').write_text('{"existing":"work state"}')
+        self.gateway()
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(secret.read_bytes(), b'private existing gateway cache')
+        self.assertEqual((legacy / 'settings.json').read_text(), original)
+        self.assertEqual((target / '.claude.json').read_text(), '{"existing":"work state"}')
+        self.assertEqual(json.loads((target / 'settings.json').read_text())['permissions']['defaultMode'], 'acceptEdits')
+        self.assertIn('"epic"', (self.home / '.codex-epic/config.toml').read_text())
+
     def installer(self, fail=False):
         profile = self.home / '.claude-epic'
         profile.mkdir()

@@ -74,13 +74,21 @@ def setup(home):
     profiles = profile_files(home)
     migrated = False
     if not all(path.is_file() for path in profiles['claude']):
-        migration = migrate_legacy_claude(home, apply=True)
-        if migration['status'] in ('blocked', 'failed'):
-            raise ValueError(migration['reason'])
-        migrated = migration['status'] == 'migrated'
-        if migrated:
-            print(migration['reason'])
-            print('Recovery journal: ' + migration['journal'])
+        destination = home / '.claude-epic'
+        # Tokens/logs can precede settings.json, and Codex can already share
+        # that live gateway cache. Complete it in place instead of attempting
+        # to merge or relocate a legacy account over it.
+        occupied = destination.is_dir() and any(destination.iterdir())
+        if occupied:
+            print('Completing the existing Epic Claude profile in place; the default Claude profile is retained.')
+        else:
+            migration = migrate_legacy_claude(home, apply=True)
+            if migration['status'] in ('blocked', 'failed'):
+                raise ValueError(migration['reason'])
+            migrated = migration['status'] == 'migrated'
+            if migrated:
+                print(migration['reason'])
+                print('Recovery journal: ' + migration['journal'])
     validate_profiles(profiles)
     missing = {name: paths for name, paths in profiles.items() if not all(path.is_file() for path in paths)}
     for directory in (home / '.claude-epic', home / '.codex-epic'):

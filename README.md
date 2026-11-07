@@ -114,6 +114,8 @@ and its sidecar into an empty `~/.claude-epic`, with private backups and a recov
 journal. It preserves ordinary personal profiles and stops on account conflicts.
 Valid partial work configs are backed up before repair; success requires the
 expected files to exist. Already-configured clients do not repeat sign-in.
+An existing Epic token/cache directory is completed in place; setup retains
+the older default Claude profile rather than moving it over that live state.
 
 Within `~/dev/epic`, `claude` and `codex` (including the retained `gh solve`
 and `gh follow` workflows through the shared `dotfiles-agent` dispatcher) select isolated `~/.claude-epic` and

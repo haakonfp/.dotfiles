@@ -31,12 +31,16 @@ _epic_agent() {
   local agent=$1 profile=$2
   shift 2
   _epic_require_wsl || return
+  local information=false
+  if [[ $agent == claude && $# == 1 ]]; then
+    case $1 in --version|-v|--help|-h) information=true ;; esac
+  fi
   local claude_home="$HOME/.claude" codex_home="$HOME/.codex"
   if [[ $profile == epic ]]; then
     claude_home="$HOME/.claude-epic"
     codex_home="$HOME/.codex-epic"
     if [[ $agent == claude ]]; then
-      [[ -f $claude_home/settings.json && -f $claude_home/gateway-helper-config.json ]] || {
+      $information || [[ -f $claude_home/settings.json && -f $claude_home/gateway-helper-config.json ]] || {
         printf 'Epic Claude is not configured. Run: epic-ai-setup\n' >&2; return 1;
       }
     else
@@ -49,7 +53,7 @@ _epic_agent() {
     # invoked personal client's directory; existing account state stays intact.
     local personal_home=$codex_home
     [[ $agent != claude ]] || personal_home=$claude_home
-    if [[ ! -e $personal_home && ! -L $personal_home ]]; then
+    if ! $information && [[ ! -e $personal_home && ! -L $personal_home ]]; then
       (umask 077; mkdir -p -- "$personal_home") || return
     fi
   fi

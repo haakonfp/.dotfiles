@@ -73,6 +73,10 @@ JSON config path references are rewritten; credentials and sessions move intact.
 The recovery journal and original config bytes are private under
 `~/.local/state/dotfiles/ai-migrations/`. Nonempty destinations, ambiguous
 sidecars and linked paths stop migration rather than merging accounts.
+If the Epic directory already contains tokens, logs or other state, setup
+completes that profile in place and retains the old default profile. In
+particular, gateway tokens used by working Codex are not moved. The standalone
+migration preview still reports conflicting profiles for explicit reconciliation.
 You can inspect the migration before setup:
 
 ```bash
