@@ -25,7 +25,8 @@
 - [x] Verify Epic routing and gateway setup against the coworker's script, without modifying that repository; add missing work-folder creation and isolated credential-helper handling.
 - [x] Ensure explicit bootstrap installs latest Claude/Codex with mise even when older binaries exist.
 - [x] Document permanent-folder migration, Bash, personal/work logins, Git identity/authentication and copyable WSL commands.
-- [ ] Run full tests and independent review; commit by feature, merge and push main.
+- [x] Run independent review and fix the reported archived-relative-link and personal-authentication-link gaps with failing/passing regressions; align the bootstrap preview with mandatory latest-client updates.
+- [ ] Complete the full suite, commit final fixes, merge and push main.
 
 ## Review focus
 

@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **129 tests passed**, including a private tmux server
+- Full expanded suite: **135 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -63,6 +63,10 @@ The second platform review found and fixed gaps not covered by the original
   `-next` installation, dirty old checkout preservation, personal authentication,
   absolute/relative backup links, restore after the move, and injected second
   enrollment/metadata failures. Epic opt-in is inferred and can be disabled.
+  Final review regressions cover relative links inside archived checkouts,
+  authentication links in real Codex/Claude/SSH directories, and restoring their
+  original targets after a late failure. Unrelated project links stay untouched;
+  a checkout containing its own backup state is rejected before writes.
 - Real Git checks verify personal/work/sibling identity and credential-helper
   scoping, including setting personal identity after Epic setup. The shared
   gateway credential helper uses isolated work homes and provider environment.

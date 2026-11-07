@@ -121,6 +121,64 @@ class RelocateTests(unittest.TestCase):
         self.assertEqual(active.resolve(), result['archive'] / 'gh/.config/gh/hosts.yml')
         self.assertEqual(active.read_text(), 'github.com:\n  oauth_token: fixture-only\n')
 
+    def test_archive_internal_relative_link_keeps_external_private_target(self):
+        old = self.copy_checkout(self.destination)
+        private = self.home / 'private/token'
+        private.parent.mkdir()
+        private.write_text('private token fixture')
+        (old / 'legacy-private').symlink_to('../private', target_is_directory=True)
+        active = self.home / '.legacy-private'
+        active.symlink_to('.dotfiles/legacy-private')
+        result = self.move(apply=True)
+        self.assertTrue((active / 'token').is_file(), 'archive-relative private link broke')
+        self.assertEqual((active / 'token').read_text(), 'private token fixture')
+        self.assertEqual((result['archive'] / 'legacy-private/token').read_text(), 'private token fixture')
+
+    def test_private_agent_and_ssh_links_follow_old_checkout_credentials(self):
+        old = self.copy_checkout(self.destination)
+        for folder, name in (('.codex', 'auth.json'), ('.claude', '.credentials.json'), ('.ssh', 'id_work')):
+            original = old / ('private-' + folder[1:]) / name
+            original.parent.mkdir()
+            original.write_text('private ' + folder + ' fixture')
+            active = self.home / folder / name
+            active.parent.mkdir()
+            active.symlink_to(original)
+        result = self.move(apply=True)
+        for folder, name in (('.codex', 'auth.json'), ('.claude', '.credentials.json'), ('.ssh', 'id_work')):
+            active = self.home / folder / name
+            self.assertTrue(active.is_file(), 'relocation disconnected ' + folder)
+            self.assertEqual(active.read_text(), 'private ' + folder + ' fixture')
+            self.assertEqual(active.resolve(), result['archive'] / ('private-' + folder[1:]) / name)
+
+    def test_unrelated_relative_project_link_is_not_rewritten(self):
+        target = self.home / 'dev/personal/package/tool'
+        target.parent.mkdir(parents=True)
+        target.write_text('project fixture')
+        link = self.home / 'dev/personal/bin/tool'
+        link.parent.mkdir()
+        link.symlink_to('../package/tool')
+        loop = self.home / 'dev/personal/loop'
+        loop.symlink_to('loop', target_is_directory=True)
+        broken = self.home / 'dev/personal/broken'
+        broken.symlink_to('loop/missing')
+        self.move(apply=True)
+        self.assertEqual(os.readlink(link), '../package/tool')
+        self.assertEqual(link.read_text(), 'project fixture')
+        self.assertEqual(os.readlink(broken), 'loop/missing')
+
+    def test_nested_source_checkout_rebases_its_external_relative_links(self):
+        nested = self.home / 'staging/new checkout'
+        nested.parent.mkdir()
+        self.source.rename(nested)
+        self.source = nested
+        private = nested.parent / 'private/token'
+        private.parent.mkdir()
+        private.write_text('source private fixture')
+        (self.source / 'private-link').symlink_to('../private', target_is_directory=True)
+        self.move(apply=True)
+        self.assertTrue((self.destination / 'private-link/token').is_file())
+        self.assertEqual((self.destination / 'private-link/token').read_text(), 'source private fixture')
+
     def test_existing_next_install_manifest_restores_original_after_move(self):
         original = self.home / '.bashrc'
         original.write_text('# personal bash before dotfiles\n')
@@ -244,6 +302,32 @@ class RelocateTests(unittest.TestCase):
         self.assertEqual(original.read_text(), '# original personal bash\n')
         self.assertFalse(original.is_symlink())
 
+    def test_late_failure_restores_original_relative_and_credential_links(self):
+        old = self.copy_checkout(self.destination)
+        private = self.home / 'private/token'
+        private.parent.mkdir()
+        private.write_text('private fixture')
+        link = old / 'legacy-private'
+        link.symlink_to('../private', target_is_directory=True)
+        active = self.home / '.codex/auth.json'
+        active.parent.mkdir()
+        active.symlink_to(old / 'legacy-private/token')
+        raw_auth = os.readlink(active)
+        write = self.relocator.atomic_file
+        failures = []
+        def fail_once(path, content, mode):
+            if path.name == 'manifest.json' and not failures:
+                failures.append(path)
+                raise OSError('fixture late repair failed')
+            return write(path, content, mode)
+        with mock.patch.object(self.relocator, 'atomic_file', side_effect=fail_once), \
+                self.assertRaisesRegex(OSError, 'fixture late repair failed'):
+            self.move(apply=True)
+        self.assertEqual(os.readlink(link), '../private')
+        self.assertEqual(os.readlink(active), raw_auth)
+        self.assertEqual(active.read_text(), 'private fixture')
+        self.assertTrue(self.source.is_dir())
+
     def test_canonical_repeat_is_noop_without_first_install(self):
         self.source.rename(self.destination)
         before = self.snapshot(self.home)
@@ -296,6 +380,14 @@ class RelocateTests(unittest.TestCase):
         before = self.snapshot(self.home)
         with self.assertRaises((ValueError, OSError)), contextlib.redirect_stdout(self.output):
             self.relocator.relocate(self.source, nested_home, profile='wsl', apply=True)
+        self.assertEqual(self.snapshot(self.home), before)
+
+    def test_checkout_containing_its_backup_state_is_rejected_before_writes(self):
+        self.source.rename(self.home / '.local')
+        self.source = self.home / '.local'
+        before = self.snapshot(self.home)
+        with self.assertRaises((ValueError, OSError)), contextlib.redirect_stdout(self.output):
+            self.move(apply=True)
         self.assertEqual(self.snapshot(self.home), before)
 
     def test_linked_worktree_source_is_rejected_before_writes(self):

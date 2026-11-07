@@ -55,6 +55,8 @@ class BootstrapTests(unittest.TestCase):
         result = self.run_script('bootstrap-wsl', '--dry-run')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Docker', result.stdout)
+        self.assertIn('latest Claude/Codex', result.stdout)
+        self.assertIn('existing clients', result.stdout)
         self.assertEqual(list(self.home.iterdir()), [])
 
     def test_wsl1_rejected_before_any_provisioning_or_home_writes(self):

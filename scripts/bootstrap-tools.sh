@@ -438,7 +438,7 @@ bootstrap_main() {
     bootstrap_error 'Windows options require Ubuntu WSL.'; return 1
   fi
   if $dry_run; then
-    printf 'Would provision %s: core tools, Rust stable/Cargo/rustfmt/Clippy, mise Node 26.8.2/pnpm 12.11.2 and missing AI CLIs, font family, pinned tmux sidebar; then install --apply.\n' "$profile"
+    printf 'Would provision %s: core tools, Rust stable/Cargo/rustfmt/Clippy, mise Node 26.8.2/pnpm 12.11.2, install/update latest Claude/Codex (including existing clients), font family, pinned tmux sidebar; then install --apply.\n' "$profile"
     [[ $profile != wsl ]] || echo 'Would preflight native Docker ownership, install Ubuntu Docker Engine/Compose/Buildx, configure service/group access and select Bash.'
     $epic && echo 'Would add optional Epic shell links, conditional local Git include and non-destructive Windows kubeconfig link; no AI homes or SSO.'
     $windows_fonts && echo 'Would install Windows host fonts.'

@@ -79,11 +79,54 @@ def symlinks(root):
                 yield path
 
 
-def repair_changes(home, source, destination, archive, final_manifests, managed_paths):
+def link_reference(path, original=None):
+    raw = os.readlink(path)
+    location = original if original is not None else path
+    target = Path(os.path.join(location.parent, raw))
+    # Resolve ancestor symlinks while retaining the final link's identity.
+    # This keeps both multi-link chains and symlink/../path semantics intact.
+    try:
+        absolute = os.path.normpath(target.parent.resolve() / target.name)
+    except (OSError, RuntimeError):
+        # Unrelated broken/looping links do not block checkout relocation.
+        absolute = os.path.abspath(target)
+    return raw, absolute
+
+
+def home_symlinks(home, excluded):
+    for directory, dirs, files in os.walk(home, followlinks=False):
+        parent = Path(directory)
+        for name in dirs + files:
+            path = parent / name
+            if path.is_symlink():
+                yield path
+        dirs[:] = [name for name in dirs
+                   if parent / name not in excluded and not (parent / name).is_symlink()]
+
+
+def backup_references(home):
+    references = {}
+    for manifest in manifests(home):
+        read_manifest(manifest, home)
+        files = manifest.parent / 'files'
+        for link in symlinks(files):
+            references[link] = link_reference(link, home / link.relative_to(files))
+    return references
+
+
+def repair_changes(home, source, destination, archive, final_manifests, managed_paths,
+                   checkout_refs, live_refs, backup_refs):
     """Compute changes first; callers journal old values before atomic updates."""
     new_mapping = [(source, destination)]
     mapping = new_mapping + ([(destination, archive)] if archive else [])
     changes = []
+    for root, relative, raw, absolute in checkout_refs:
+        relocated = destination if root == source else archive
+        link = relocated / relative
+        target = mapped_path(absolute, mapping)
+        value = target if os.path.isabs(raw) else os.path.relpath(target, link.parent)
+        if value != raw:
+            changes.append((link, 'link', value))
     for manifest in manifests(home):
         data = read_manifest(manifest, home)
         installed_mapping = new_mapping if manifest in final_manifests else mapping
@@ -100,22 +143,23 @@ def repair_changes(home, source, destination, archive, final_manifests, managed_
             # home location, not relative to the backup directory.
             original = home / link.relative_to(files)
             raw = os.readlink(link)
-            absolute = os.path.normpath(os.path.join(original.parent, raw))
+            before = backup_refs.get(link)
+            absolute = before[1] if before and before[0] == raw else link_reference(link, original)[1]
             target = mapped_path(absolute, installed_mapping)
             if target != raw:
                 changes.append((link, 'link', target))
-    live = {path for path in home.iterdir() if path.is_symlink()}
-    for root in (home / '.config', home / '.local/bin',
-                 home / '.local/state/omarchy/current/theme'):
-        if root.is_dir() and root.resolve().is_relative_to(home):
-            live.update(symlinks(root.resolve()))
-    for link in sorted(live):
+    excluded = {source, destination, home / '.local/state/dotfiles'}
+    for link in sorted(home_symlinks(home, excluded)):
         raw = os.readlink(link)
-        absolute = os.path.normpath(os.path.join(link.parent, raw))
+        before = live_refs.get(link)
+        absolute = before[1] if before and before[0] == raw else os.path.normpath(os.path.join(link.parent, raw))
         # Selected links now point into the new canonical checkout. Other
         # legacy links still pointing at the old checkout follow its archive.
         applicable = new_mapping if link.relative_to(home) in managed_paths else mapping
         target = mapped_path(absolute, applicable)
+        logical = os.path.normpath(os.path.join(link.parent, raw))
+        if target == absolute and mapped_path(logical, applicable) == logical:
+            continue
         if target != raw:
             changes.append((link, 'link', target))
     return changes
@@ -167,11 +211,18 @@ def relocate(source, home, profile, epic=None, apply=False):
     if epic and (profile != 'wsl' or not installer.ubuntu_wsl()):
         raise ValueError('Epic relocation requires Ubuntu WSL')
     state = home / '.local/state/dotfiles'
+    if state.is_relative_to(source):
+        raise ValueError('Checkout cannot contain its own relocation/backup state')
     installer.validate_parent(home, state / 'checkouts/placeholder')
     for manifest in manifests(home):
         read_manifest(manifest, home)
     operations = installer.plan_install(home, profile, epic=epic)
     installer.installation_directories(home, desktop=profile == 'omarchy')
+    checkout_refs = [(root, link.relative_to(root), *link_reference(link))
+                     for root in (source, destination) if root.is_dir()
+                     for link in symlinks(root)]
+    excluded = {source, destination, state}
+    live_refs = {link: link_reference(link) for link in home_symlinks(home, excluded)}
     print(f'Checkout: {source} -> {destination}')
     if destination.exists():
         print(f'Old checkout will be archived under {state / "checkouts"}.')
@@ -204,6 +255,7 @@ def relocate(source, home, profile, epic=None, apply=False):
     try:
         save_status('enrolling')
         enroll(installer, operations)
+        backup_refs = backup_references(home)
         if archive:
             archive.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             destination.rename(archive)
@@ -218,8 +270,11 @@ def relocate(source, home, profile, epic=None, apply=False):
                     *(('epic',) if epic else ()))
         managed = {relative for relative, _ in current.package_files(packages)}
         final = set(phases[-1]['manifests'])
-        changes = repair_changes(home, source, destination, archive, final, managed)
+        changes = repair_changes(home, source, destination, archive, final, managed,
+                                 checkout_refs, live_refs, backup_refs)
         apply_changes(changes, undo)
+        details['rewritten_links'] = [dict(path=str(path), original=old)
+                                      for path, kind, old, _ in undo if kind == 'link']
         save_status('complete')
     except BaseException as error:
         failures = []
