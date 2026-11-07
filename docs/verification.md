@@ -20,9 +20,14 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **197 tests passed**, including a private tmux server
+- Previous full expanded suite: **197 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
+- Personal Codex provider repair: **28 focused tests passed** across the preference
+  merger, installer transaction/restore and Epic setup. They cover personal
+  ChatGPT selection, private backups, unchanged authentication files, retained
+  Epic provider/model and repeat application. The full suite was not repeated
+  for this repair.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
   parsing and Hyprland Lua verification in disposable homes, including a
   pre-existing Git-installed theme.

@@ -122,6 +122,10 @@ and `gh follow` workflows through the shared `dotfiles-agent` dispatcher) select
 `~/.codex-epic` homes. Elsewhere they use the personal homes. Explicit
 `claude-epic` and `codex-epic` commands work from any directory. Missing work
 configuration fails with a setup hint; it does not fall back to a personal account.
+An old personal Codex config selecting Portkey is backed up and switched to
+OpenAI/ChatGPT by the opted-in installer or `epic-ai-setup`. Sign into your
+personal ChatGPT account with `cd ~` then `codex login`; the Epic provider stays
+in `~/.codex-epic`. See [repair commands](docs/epic.md#install-and-sign-in).
 Set your own Epic Git identity in `~/.config/dotfiles/git-epic.local` before
 committing work. For another workspace, export `EPIC_WORKSPACE` before running
 the explicit Epic bootstrap and keep it in your local Bash override.

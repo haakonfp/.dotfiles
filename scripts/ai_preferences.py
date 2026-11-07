@@ -109,6 +109,30 @@ def merge_codex_config(text):
     return output
 
 
+def merge_personal_codex_config(text, *, portkey_only=False):
+    """Prepare direct ChatGPT login; never reuse a gateway model/catalog/auth."""
+    data = tomllib.loads(text)
+    provider = data.get('model_provider', 'openai')
+    if portkey_only and provider != 'portkey':
+        return text
+    if provider != 'openai':
+        # Gateway aliases/catalogs need not exist in the personal account.
+        data.pop('model', None)
+        providers = _object(data.get('model_providers', {}), 'Codex model_providers')
+        providers.pop(provider, None)
+        if providers:
+            data['model_providers'] = providers
+        else:
+            data.pop('model_providers', None)
+    for key in ('model_catalog_json', 'model_catalog_url', 'profile',
+                'openai_base_url', 'chatgpt_base_url', 'forced_chatgpt_workspace_id'):
+        data.pop(key, None)
+    data.update(model_provider='openai', forced_login_method='chatgpt', cli_auth_credentials_store='file')
+    updated = merge_codex_config(''.join(f'{_toml_value(key)} = {_toml_value(value)}\n'
+                                       for key, value in data.items()))
+    return text if tomllib.loads(updated) == tomllib.loads(text) else updated
+
+
 def validate_config_path(path):
     """Reject linked/nonregular configs and linked parents, rather than retarget."""
     path = Path(path).expanduser().absolute()
@@ -129,17 +153,19 @@ def validate_config_path(path):
 
 
 def preference_files(*, claude_home=None, codex_home=None,
-                     statusline_command='claude-statusline'):
+                     statusline_command='claude-statusline', personal_openai=False):
     """Return selected absolute config paths and merged content without writing.
 
     Homes are explicit so the caller decides between personal/work accounts.
     Every supplied config is validated before the caller receives any changes.
     """
     output = {}
+    if personal_openai and (codex_home is None or Path(codex_home).name != '.codex'):
+        raise ValueError('Personal OpenAI setup requires the personal .codex home, never an Epic home')
     for home, name, merge in (
             (claude_home, 'settings.json',
              lambda text: merge_claude_settings(text, statusline_command)),
-            (codex_home, 'config.toml', merge_codex_config)):
+            (codex_home, 'config.toml', merge_personal_codex_config if personal_openai else merge_codex_config)):
         if home is None:
             continue
         path = validate_config_path(Path(home) / name)
@@ -217,13 +243,15 @@ def main(argv=None):
     parser.add_argument('--codex-home', type=Path, help='Explicit selected Codex config directory')
     parser.add_argument('--statusline-command', default='claude-statusline',
                         help='Claude shell command (default: claude-statusline on PATH)')
+    parser.add_argument('--personal-openai', action='store_true',
+                        help='Prepare personal .codex for direct ChatGPT login; back up the old provider config')
     parser.add_argument('--apply', action='store_true', help='Back up and atomically write changes')
     args = parser.parse_args(argv)
     if args.claude_home is None and args.codex_home is None:
         parser.error('Select --claude-home and/or --codex-home explicitly')
     try:
         files = preference_files(claude_home=args.claude_home, codex_home=args.codex_home,
-                                 statusline_command=args.statusline_command)
+                                 statusline_command=args.statusline_command, personal_openai=args.personal_openai)
         for path, text in files.items():
             changed = not path.exists() or path.read_bytes() != text.encode('utf-8')
             print(f'{"Update" if changed else "Unchanged"}: {path}')

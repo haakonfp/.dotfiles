@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 import uuid
 
-from ai_preferences import apply_preferences, preference_files, validate_config_path
+from ai_preferences import apply_preferences, merge_personal_codex_config, preference_files, validate_config_path
 from migrate_claude_profile import migrate_legacy_claude
 
 
@@ -127,7 +127,17 @@ def setup(home):
     if migrated:
         preferences.update(preference_files(claude_home=home / '.claude',
                                             statusline_command=shlex.quote(str(home / '.local/bin/claude-statusline'))))
+    personal = validate_config_path(home / '.codex/config.toml')
+    converted_personal = False
+    if personal.is_file():
+        original = personal.read_text()
+        updated = merge_personal_codex_config(original, portkey_only=True)
+        if updated != original:
+            preferences[personal] = updated
+            converted_personal = True
     apply_preferences(preferences)
+    if converted_personal:
+        print('Personal Codex now selects OpenAI/ChatGPT. Outside ~/dev/epic run: codex login')
     print('Epic profiles ready. Claude accepts edits; verify identity with claude-epic and codex-epic before working.')
 
 

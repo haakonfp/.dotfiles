@@ -141,6 +141,9 @@ def ai_preferences(home, epic=False):
     for claude, codex in homes:
         files.update(helper['preference_files'](claude_home=claude, codex_home=codex,
                                                statusline_command=command))
+    if epic:
+        personal = home / '.codex/config.toml'
+        files[personal] = helper['merge_personal_codex_config'](files[personal], portkey_only=True)
     return {str(path.relative_to(home)): dict(kind='write', content=text)
             for path, text in files.items()}
 

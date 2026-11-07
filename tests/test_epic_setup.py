@@ -121,6 +121,25 @@ chmod +x "$HOME/.local/bin/claude-gateway"
         self.assertEqual((codex / 'config.toml').read_text(), 'model_provider="epic"\n')
         self.assertEqual((codex / 'claude-gateway.json').read_text(), '{}')
 
+    def test_setup_prepares_personal_chatgpt_without_changing_work_provider(self):
+        target = self.home / '.claude-epic'
+        target.mkdir()
+        (target / 'settings.json').write_text('{}')
+        (target / 'gateway-helper-config.json').write_text('{}')
+        personal = self.home / '.codex'
+        personal.mkdir()
+        (personal / 'config.toml').write_text('model_provider="portkey"\nmodel="gateway-only-model"\n')
+        self.fixture.fake('claude-gateway', 'exit 99')
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        import tomllib
+        config = tomllib.loads((personal / 'config.toml').read_text())
+        self.assertEqual(config['model_provider'], 'openai')
+        self.assertEqual(config['forced_login_method'], 'chatgpt')
+        self.assertNotIn('model', config)
+        self.assertEqual(tomllib.loads((self.home / '.codex-epic/config.toml').read_text())['model_provider'], 'epic')
+        self.assertIn('codex login', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -23,6 +23,35 @@ def load_tool():
 
 
 class MergeTests(unittest.TestCase):
+    def test_personal_chatgpt_conversion_discards_gateway_routes_and_preserves_unrelated_values(self):
+        tool = load_tool()
+        original = '''model_provider="portkey"
+model="gateway-model"
+profile="work"
+openai_base_url="https://gateway.example.test"
+chatgpt_base_url="https://login.example.test"
+model_catalog_url="https://catalog.example.test"
+forced_chatgpt_workspace_id="old-workspace"
+[model_providers.portkey]
+experimental_bearer_token="gateway-secret"
+[model_providers.unrelated]
+base_url="https://unrelated.example.test"
+[mcp_servers.local]
+command="keep-me"
+'''
+        result = tool.merge_personal_codex_config(original)
+        data = tomllib.loads(result)
+        self.assertEqual(data['model_provider'], 'openai')
+        self.assertEqual(data['forced_login_method'], 'chatgpt')
+        self.assertEqual(data['cli_auth_credentials_store'], 'file')
+        for field in ('model', 'profile', 'openai_base_url', 'chatgpt_base_url',
+                      'model_catalog_url', 'forced_chatgpt_workspace_id'):
+            self.assertNotIn(field, data)
+        self.assertNotIn('gateway-secret', result)
+        self.assertEqual(data['mcp_servers']['local']['command'], 'keep-me')
+        self.assertIn('unrelated', data['model_providers'])
+        self.assertEqual(tool.merge_personal_codex_config(result), result)
+
     def test_claude_preserves_account_hooks_and_permission_rules(self):
         tool = load_tool()
         original = {'env': {'ANTHROPIC_BASE_URL': 'https://work.example.test'},
@@ -106,6 +135,31 @@ name = "two"
 
 
 class FilesystemTests(unittest.TestCase):
+    def test_explicit_personal_conversion_has_private_backup_and_refuses_work_home(self):
+        personal = self.root / '.codex'
+        personal.mkdir()
+        path = personal / 'config.toml'
+        original = 'model_provider="portkey"\nmodel="gateway-model"\n'
+        path.write_text(original)
+        auth = personal / 'auth.json'
+        auth.write_bytes(b'private existing credentials')
+        result = subprocess.run(['python3', str(TOOL), '--codex-home', str(personal),
+                                 '--personal-openai', '--apply'], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(tomllib.loads(path.read_text())['model_provider'], 'openai')
+        self.assertEqual(auth.read_bytes(), b'private existing credentials')
+        backups = list(personal.glob('config.toml.before-ai-preferences-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), original)
+        self.assertEqual(stat.S_IMODE(backups[0].stat().st_mode), 0o600)
+        work = self.root / '.codex-epic'
+        work.mkdir()
+        (work / 'config.toml').write_text(original)
+        result = subprocess.run(['python3', str(TOOL), '--codex-home', str(work),
+                                 '--personal-openai', '--apply'], text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((work / 'config.toml').read_text(), original)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='ai preferences ')
         self.addCleanup(self.temp.cleanup)

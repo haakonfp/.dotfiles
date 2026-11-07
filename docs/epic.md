@@ -43,6 +43,27 @@ creates private settings with shared UI/edit defaults; account login remains
 local. Ordinary personal account files stay in place. Legacy named profiles are
 not automatically combined; an existing account may need a fresh login.
 
+For an old setup where both Codex homes select Portkey, update and apply only
+the configuration, then sign into your ChatGPT account from your home directory:
+
+```bash
+cd ~/.dotfiles
+git pull --ff-only
+./install --profile wsl --epic --apply
+cd ~
+codex logout
+codex login
+codex login status
+```
+
+The opted-in installer and `epic-ai-setup` convert a legacy personal Portkey
+config in `~/.codex` to OpenAI with ChatGPT login. The original config is backed
+up. Gateway model/catalog selection and the active provider's gateway settings
+are removed from that personal config; Codex chooses its default personal model.
+Other custom personal providers are retained. The working `~/.codex-epic`
+provider, model and credentials stay separate. Login is interactive; choose the
+ChatGPT account that has your Pro subscription. No API key is required.
+
 Then explicitly prepare both work clients:
 
 ```bash
