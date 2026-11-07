@@ -165,8 +165,10 @@ The editor lockfile requires Neovim 0.12 or later. Bootstrap provides upstream
 the distro version. Language servers/formatters are provisioned through Mason;
 project-specific SDKs and package dependencies still belong to the projects.
 Plugin restoration and Mason installation share one Neovim process so installs
-started by LazyVim stay alive. Mason lets all queued installers finish before
-reporting any failures, with the log path printed for diagnosis. Successful
+stay alive. During bootstrap, its installer manages language tools after plugin
+builds; regular Neovim keeps LazyVim's automatic installation. Mason lets all
+queued installers finish before reporting any failures, with the log path
+printed for diagnosis. Successful
 installs survive a retry. Desktop
 theme application runs before this step, so a package failure does not prevent it.
 The sidebar checkout is pinned and built through Cargo; no plugin wizard changes

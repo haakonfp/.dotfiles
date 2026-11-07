@@ -20,7 +20,7 @@ The second platform review found and fixed gaps not covered by the original
 
 ## Executed here
 
-- Full expanded suite: **139 tests passed**, including a private tmux server
+- Full expanded suite: **142 tests passed**, including a private tmux server
   verifying that closing the last pane exits its client and preserves another
   session. The suite was run outside the sandbox's Unix-socket restriction.
 - Actual installed Omarchy 4.5.0 headless theme generation, Foot configuration
@@ -55,6 +55,11 @@ The second platform review found and fixed gaps not covered by the original
   Another reproduces installs started during plugin restoration: bootstrap keeps
   that same Neovim process alive until they finish, without aborting/restarting
   the jobs between plugin and language-tool setup.
+  Real cached Lazy/LazyVim configuration merging reproduces the duplicate-install
+  error during build-time Mason reconfiguration. Bootstrap now owns installs in
+  that process; a separate normal-startup test retains automatic installation.
+  A shell regression checks that failure preserves its exit code and cleans the
+  temporary directory after bootstrap's local variables have left scope.
 - Omarchy glassy/opaque mode removal is previewed, backed up and restored;
   WSL leaves it alone. Terminal settings tests cover opacity/acrylic overrides,
   unfocused appearance and a Mica-free application theme.

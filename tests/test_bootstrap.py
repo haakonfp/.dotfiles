@@ -630,6 +630,33 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(result.returncode, 31, result.stderr)
         self.assertIn('plugin installation failed', result.stderr)
 
+    def test_bootstrap_failure_cleans_staging_after_function_scope_ends(self):
+        stage = self.root / "staging ' with spaces"
+        stage.mkdir()
+        self.env['FIXTURE_STAGE'] = str(stage)
+        fake_repo = self.root / 'repo'
+        (fake_repo / 'scripts').mkdir(parents=True)
+        for path in ('scripts/install-tmux-plugins', 'scripts/install-fonts.sh', 'install'):
+            script = fake_repo / path
+            script.write_text('#!/bin/bash\nexit 0\n')
+            script.chmod(0o755)
+        result = self.library('''
+repo=''' + shlex.quote(str(fake_repo)) + '''
+mktemp() { printf '%s\\n' "$FIXTURE_STAGE"; }
+omarchy() { :; }
+bootstrap_packages() { :; }
+bootstrap_alias_commands() { :; }
+bootstrap_rust() { :; }
+bootstrap_mise() { :; }
+bootstrap_neovim() { :; }
+bootstrap_tmux() { :; }
+bootstrap_editor_assets() { return 37; }
+bootstrap_main --profile omarchy
+''')
+        self.assertEqual(result.returncode, 37, result.stdout + result.stderr)
+        self.assertNotIn('unbound variable', result.stderr)
+        self.assertFalse(stage.exists(), 'EXIT cleanup lost its function-local staging path')
+
     def dispatcher_fixture(self):
         shell = self.home / '.config/dotfiles/shell'
         shell.mkdir(parents=True, exist_ok=True)
@@ -818,6 +845,102 @@ package.preload['mason-registry'] = function() return {
         self.assertTrue(finished.exists(), result.stdout + result.stderr)
         self.assertEqual(starts.read_text().splitlines(), ['started'])
         self.assertIn('SUCCESS_SENTINEL', result.stdout)
+
+    def lazyvim_mason_fixture(self):
+        cache = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'nvim/lazy'
+        lazy = cache / 'lazy.nvim'
+        upstream = cache / 'LazyVim/lua/lazyvim/plugins/lsp/init.lua'
+        if not lazy.is_dir() or not upstream.is_file():
+            self.skipTest('Cached Lazy/LazyVim needed for real configuration merge')
+        self.env['FIXTURE_LAZY'] = str(lazy)
+        self.env['FIXTURE_LAZYVIM_LSP'] = str(upstream)
+        self.env['FIXTURE_USER_LANGUAGES'] = str(REPO / 'nvim/.config/nvim/lua/plugins/osirion-languages.lua')
+        self.env['FIXTURE_INSTALLS'] = str(self.root / 'installs')
+        preload = self.root / 'preload.lua'
+        preload.write_text('''
+vim.opt.rtp:prepend(vim.env.FIXTURE_LAZY)
+local packages = {}
+local function get_package(name)
+  if packages[name] then return packages[name] end
+  local installing, installed, callbacks = false, false, {}
+  local pkg = {
+    is_installed=function() return installed end,
+    is_installing=function() return installing end,
+    once=function(_, event, cb) callbacks[event] = cb end,
+    install=function()
+      assert(not installing, 'Package is already installing.')
+      installing = true
+      vim.fn.writefile({name}, vim.env.FIXTURE_INSTALLS, 'a')
+      vim.defer_fn(function()
+        installing, installed = false, true
+        if callbacks['install:success'] then callbacks['install:success']() end
+      end, 500)
+    end,
+  }
+  packages[name] = pkg
+  return pkg
+end
+dotfiles_fixture_done = function()
+  for _, pkg in pairs(packages) do
+    if not pkg:is_installed() then return false end
+  end
+  return next(packages) ~= nil
+end
+package.preload['mason'] = function() return {setup=function() end} end
+package.preload['mason-registry'] = function() return {
+  refresh=function(cb) cb(true, {}) end, on=function() end, get_package=get_package,
+} end
+local inherited
+for _, spec in ipairs(dofile(vim.env.FIXTURE_LAZYVIM_LSP)) do
+  if spec[1] == 'mason-org/mason.nvim' then inherited = spec end
+end
+assert(inherited, 'Upstream Mason spec missing')
+inherited.dir = vim.fn.stdpath('data') .. '/fixture-mason'
+vim.fn.mkdir(inherited.dir, 'p')
+inherited.lazy, inherited.build, inherited.cmd, inherited.keys = false, nil, nil, nil
+require('lazy').setup({
+  spec={inherited, dofile(vim.env.FIXTURE_USER_LANGUAGES)[1]},
+  install={missing=false}, checker={enabled=false}, change_detection={enabled=false},
+  lockfile=vim.fn.stdpath('state') .. '/fixture-lock.json',
+})
+local config = require('lazy.core.config')
+local plugin = assert(config.plugins['mason.nvim'])
+local opts = require('lazy.core.plugin').values(plugin, 'opts', false)
+-- A real inherited + user configuration merge, re-entered by a plugin build.
+require('lazy.manage').restore = function()
+  local ok, err = pcall(function() plugin.config(plugin, opts) end)
+  config.plugins['nvim-treesitter'] = {_={tasks={{
+    has_errors=function() return not ok end, output=function() return tostring(err) end,
+  }}}}
+  return {wait=function() end}
+end
+''')
+        self.real_editor(str(preload))
+
+    def test_lazyvim_mason_reconfiguration_during_build_does_not_install_twice(self):
+        self.lazyvim_mason_fixture()
+        result = self.editor_run()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        installs = (self.root / 'installs').read_text().splitlines()
+        self.assertEqual(len(installs), len(set(installs)), 'A package was installed twice')
+        self.assertIn('csharpier', installs)
+        self.assertIn('shfmt', installs)
+        self.assertNotIn('Package is already installing', result.stdout + result.stderr)
+        self.assertIn('SUCCESS_SENTINEL', result.stdout)
+
+    def test_normal_neovim_retains_lazyvim_automatic_mason_installation(self):
+        self.lazyvim_mason_fixture()
+        result = subprocess.run([
+            str(self.bin / 'nvim'), '--headless',
+            '+lua assert(vim.wait(3000, dotfiles_fixture_done), "Automatic Mason installs did not finish")',
+            '+qa',
+        ], env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('Automatic Mason installs did not finish', result.stderr)
+        installs = (self.root / 'installs').read_text().splitlines()
+        self.assertIn('csharpier', installs)
+        self.assertIn('shfmt', installs)
+        self.assertEqual(len(installs), len(set(installs)))
 
     def test_mason_failure_waits_for_other_installs_and_reports_log(self):
         finished = self.root / 'other-package-installed'

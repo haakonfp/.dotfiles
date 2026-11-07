@@ -325,7 +325,7 @@ assert(completed, "Mason setup incomplete (15 minute timeout)" .. log_hint)
 assert(#failures == 0, "Mason setup incomplete: " .. table.concat(failures, ", ") .. log_hint)
 print("Mason language tools installed. Verify :checkhealth and project SDK requirements locally.")
 LUA
-  DOTFILES_EDITOR_SCRIPT="$bootstrap_stage/editor.lua" nvim --headless "+$protected" +qa || return
+  DOTFILES_NVIM_BOOTSTRAP=1 DOTFILES_EDITOR_SCRIPT="$bootstrap_stage/editor.lua" nvim --headless "+$protected" +qa || return
 }
 bootstrap_native_docker() {
   local user current_shell
@@ -450,9 +450,11 @@ bootstrap_main() {
     command -v omarchy >/dev/null || { bootstrap_error 'Omarchy package CLI is required.'; return 1; }
   fi
   export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.local/share/mise/shims:$PATH"
-  local bootstrap_stage
+  local bootstrap_stage bootstrap_cleanup
   bootstrap_stage=$(mktemp -d)
-  trap 'rm -rf -- "$bootstrap_stage"' EXIT
+  # Capture the safely quoted path now: EXIT may run after locals leave scope.
+  printf -v bootstrap_cleanup 'rm -rf -- %q' "$bootstrap_stage"
+  trap "$bootstrap_cleanup" EXIT
   mkdir -p -- "$HOME/.local/bin"
   bootstrap_packages "$profile"
   bootstrap_alias_commands

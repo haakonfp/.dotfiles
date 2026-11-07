@@ -3,6 +3,13 @@ return {
 
   {
     "mason-org/mason.nvim",
+    -- Bootstrap owns package installation after plugin builds have settled.
+    -- LazyVim's automatic refresh callback can otherwise request the same
+    -- package again when a build re-enters configuration. Interactive startup
+    -- keeps the inherited LazyVim config and its automatic installation.
+    config = vim.env.DOTFILES_NVIM_BOOTSTRAP == "1" and function(_, opts)
+      require("mason").setup(opts)
+    end or nil,
     opts = function(_, opts)
       opts.ensure_installed = opts.ensure_installed or {}
       for _, tool in ipairs({
